@@ -37,6 +37,6 @@
     </None>
   </ItemGroup>
 
-  <Import Project="$(MSBuildThisFileName).user" Condition="Exists('$(MSBuildThisFileName).user')" />
+  <Import Project="$(MSBuildProjectFullPath).user" Condition="Exists('$(MSBuildProjectFullPath).user')" />
 
 </Project>

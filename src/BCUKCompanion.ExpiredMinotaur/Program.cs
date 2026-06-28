@@ -33,6 +33,10 @@ internal static class Program
                     }
                     else
                     {
+                        if (settingsWindow.WindowState == WindowState.Minimized)
+                        {
+                            settingsWindow.WindowState = WindowState.Normal;
+                        }
                         settingsWindow.Activate();
                     }
                 }),
