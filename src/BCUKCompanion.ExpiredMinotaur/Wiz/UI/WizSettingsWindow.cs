@@ -221,6 +221,12 @@ public sealed class WizSettingsWindow : Window
         var dialog = new WizDeviceEditDialog { Owner = this };
         if (dialog.ShowDialog() == true && dialog.Result is { } device)
         {
+            if (devices.Any(d => string.Equals(d.IpAddress, device.IpAddress, StringComparison.OrdinalIgnoreCase)))
+            {
+                statusText.Text = "A device with that IP address already exists.";
+                return;
+            }
+
             devices.Add(device);
         }
     }
@@ -237,6 +243,13 @@ public sealed class WizSettingsWindow : Window
         var dialog = new WizDeviceEditDialog(selected) { Owner = this };
         if (dialog.ShowDialog() == true && dialog.Result is { } updated)
         {
+            if (devices.Any(d => d.Id != updated.Id
+                && string.Equals(d.IpAddress, updated.IpAddress, StringComparison.OrdinalIgnoreCase)))
+            {
+                statusText.Text = "A device with that IP address already exists.";
+                return;
+            }
+
             devices[index] = updated;
 
             var removedActionCount = 0;
@@ -358,7 +371,7 @@ public sealed class WizSettingsWindow : Window
             return;
         }
 
-        var index = mapping.Actions.IndexOf(selected.Action);
+        var index = actionsList.SelectedIndex;
         var dialog = new WizActionEditDialog(devices, selected.Action) { Owner = this };
         if (dialog.ShowDialog() == true && dialog.Result is { } updated)
         {
@@ -381,7 +394,7 @@ public sealed class WizSettingsWindow : Window
             return;
         }
 
-        mapping.Actions.Remove(selected.Action);
+        mapping.Actions.RemoveAt(actionsList.SelectedIndex);
         RefreshActionsList();
     }
 
@@ -412,7 +425,14 @@ public sealed class WizSettingsWindow : Window
 
     private void OnSave()
     {
-        configStore.Save(BuildConfig());
-        statusText.Text = $"Saved to {configStore.ConfigFilePath}";
+        try
+        {
+            configStore.Save(BuildConfig());
+            statusText.Text = $"Saved to {configStore.ConfigFilePath}";
+        }
+        catch (Exception ex)
+        {
+            statusText.Text = $"Save failed: {ex.Message}";
+        }
     }
 }
