@@ -250,6 +250,17 @@ public sealed class WizSettingsWindow : Window
         }
 
         devices.Remove(selected);
+
+        var removedActionCount = 0;
+        foreach (var mapping in mappings)
+        {
+            removedActionCount += mapping.Actions.RemoveAll(a => a.DeviceId == selected.Id);
+        }
+
+        RefreshActionsList();
+        statusText.Text = removedActionCount > 0
+            ? $"Removed device and {removedActionCount} action(s) that referenced it."
+            : "Removed device.";
     }
 
     private void OnDiscoverDevices()
@@ -304,6 +315,12 @@ public sealed class WizSettingsWindow : Window
         if (mappingsList.SelectedItem is not EventActionMapping mapping)
         {
             statusText.Text = "Select a mapping first.";
+            return;
+        }
+
+        if (devices.Count == 0)
+        {
+            statusText.Text = "Add a device first.";
             return;
         }
 
