@@ -12,8 +12,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="BCUKCompanion.Core" Version="0.1.0" />
-    <PackageReference Include="BCUKCompanion.TrayApp.Shell" Version="0.1.0" />
+    <PackageReference Include="BCUKCompanion.Core" Version="0.2.0" />
+    <PackageReference Include="BCUKCompanion.TrayApp.Shell" Version="0.2.0" />
   </ItemGroup>
 
   <ItemGroup>
