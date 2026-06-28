@@ -238,6 +238,18 @@ public sealed class WizSettingsWindow : Window
         if (dialog.ShowDialog() == true && dialog.Result is { } updated)
         {
             devices[index] = updated;
+
+            var removedActionCount = 0;
+            foreach (var mapping in mappings)
+            {
+                removedActionCount += mapping.Actions.RemoveAll(
+                    a => a.DeviceId == updated.Id && WizAction.Validate(a, updated).Count > 0);
+            }
+
+            RefreshActionsList();
+            statusText.Text = removedActionCount > 0
+                ? $"Updated device and removed {removedActionCount} action(s) no longer valid for it."
+                : "Updated device.";
         }
     }
 
