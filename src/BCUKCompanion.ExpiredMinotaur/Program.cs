@@ -1,3 +1,4 @@
+using System.Windows;
 using BCUKCompanion.ExpiredMinotaur.Wiz;
 using BCUKCompanion.ExpiredMinotaur.Wiz.UI;
 using BCUKCompanion.TrayApp;

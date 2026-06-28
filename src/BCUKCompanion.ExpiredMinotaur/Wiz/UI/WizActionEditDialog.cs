@@ -177,11 +177,7 @@ public sealed class WizActionEditDialog : Window
             : device.DeviceType == WizDeviceType.Plug
                 ? new[] { WizActionKind.TurnOn, WizActionKind.TurnOff, WizActionKind.Toggle }
                 : Enum.GetValues<WizActionKind>()
-                    .Where(kind =>
-                        kind is WizActionKind.TurnOn or WizActionKind.TurnOff or WizActionKind.Toggle
-                        || (kind == WizActionKind.SetBrightness && device.SupportsDimming)
-                        || (kind == WizActionKind.SetColor && device.SupportsColor)
-                        || (kind == WizActionKind.SetColorTemperature && device.SupportsColorTemperature))
+                    .Where(kind => IsKindSupported(kind, device))
                     .ToArray();
 
         var previouslySelected = actionKindCombo.SelectedItem as WizActionKind?;
@@ -189,6 +185,22 @@ public sealed class WizActionEditDialog : Window
         actionKindCombo.SelectedItem = previouslySelected is { } kind && kinds.Contains(kind)
             ? kind
             : kinds.FirstOrDefault();
+    }
+
+    private static bool IsKindSupported(WizActionKind kind, WizDevice device)
+    {
+        if (kind is WizActionKind.TurnOn or WizActionKind.TurnOff or WizActionKind.Toggle)
+        {
+            return true;
+        }
+
+        return kind switch
+        {
+            WizActionKind.SetBrightness => device.SupportsDimming,
+            WizActionKind.SetColor => device.SupportsColor,
+            WizActionKind.SetColorTemperature => device.SupportsColorTemperature,
+            _ => false,
+        };
     }
 
     private void RefreshParameterPanelVisibility()
