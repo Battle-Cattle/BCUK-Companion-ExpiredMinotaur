@@ -24,8 +24,11 @@ Requires the .NET 8 SDK with the Windows desktop workload (Windows only —
 see `BCUK-Companion-Core`'s `CLAUDE.md` for why this can't build on Linux).
 
 1. Configure GitHub Packages access: set `GITHUB_USERNAME` and `GITHUB_TOKEN`
-   (a PAT with `read:packages`) in your environment — `NuGet.config`
-   reads these for the `battle-cattle-github` feed.
+   (a PAT with `read:packages`, from an account with read access to the
+   org's packages) in your environment — `NuGet.config` reads these for
+   the `battle-cattle-github` feed. The default Actions `GITHUB_TOKEN`
+   cannot read packages published by the separate `BCUK-Companion-Core`
+   repo, so CI sources this from a `PACKAGES_READ_PAT` repo secret instead.
 2. Restore and build:
 
    ```powershell

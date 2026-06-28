@@ -29,7 +29,12 @@ Do not spend time trying to work around this on Linux.
 Restoring requires read access to the org's GitHub Packages feed
 (`https://nuget.pkg.github.com/Battle-Cattle/index.json`, configured in
 `NuGet.config`) — set `GITHUB_USERNAME` and `GITHUB_TOKEN` (a PAT with
-`read:packages`) in the environment before `dotnet restore`.
+`read:packages`) in the environment before `dotnet restore`. The default
+`GITHUB_TOKEN` GitHub Actions provides only grants read access to
+packages owned by *this* repo, not the separate `BCUK-Companion-Core`
+repo that publishes `BCUKCompanion.Core`/`BCUKCompanion.TrayApp.Shell` —
+CI instead uses a `PACKAGES_READ_PAT` repo secret (a classic PAT with
+`read:packages` from an account with access to the org's packages).
 
 ## Versioning
 
