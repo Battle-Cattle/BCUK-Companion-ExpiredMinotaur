@@ -176,7 +176,13 @@ public sealed class WizActionEditDialog : Window
             ? Array.Empty<WizActionKind>()
             : device.DeviceType == WizDeviceType.Plug
                 ? new[] { WizActionKind.TurnOn, WizActionKind.TurnOff, WizActionKind.Toggle }
-                : Enum.GetValues<WizActionKind>();
+                : Enum.GetValues<WizActionKind>()
+                    .Where(kind =>
+                        kind is WizActionKind.TurnOn or WizActionKind.TurnOff or WizActionKind.Toggle
+                        || (kind == WizActionKind.SetBrightness && device.SupportsDimming)
+                        || (kind == WizActionKind.SetColor && device.SupportsColor)
+                        || (kind == WizActionKind.SetColorTemperature && device.SupportsColorTemperature))
+                    .ToArray();
 
         var previouslySelected = actionKindCombo.SelectedItem as WizActionKind?;
         actionKindCombo.ItemsSource = kinds;

@@ -94,7 +94,14 @@ public sealed class WizClient
         };
 
         var requestBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new WizRequest("getSystemConfig", new { })));
-        await udp.SendAsync(requestBytes, new IPEndPoint(IPAddress.Broadcast, WizPort), cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await udp.SendAsync(requestBytes, new IPEndPoint(IPAddress.Broadcast, WizPort), cancellationToken).ConfigureAwait(false);
+        }
+        catch (SocketException)
+        {
+            yield break;
+        }
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(listenWindow ?? DefaultDiscoveryWindow);
@@ -109,6 +116,10 @@ public sealed class WizClient
                 received = await udp.ReceiveAsync(cts.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
+            {
+                yield break;
+            }
+            catch (SocketException)
             {
                 yield break;
             }

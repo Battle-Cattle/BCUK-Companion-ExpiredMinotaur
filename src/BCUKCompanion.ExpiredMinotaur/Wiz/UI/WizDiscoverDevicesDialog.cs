@@ -22,6 +22,7 @@ public sealed class WizDiscoverDevicesDialog : Window
     private readonly ListBox resultsList = new() { Margin = new Thickness(0, 0, 0, 8), MinHeight = 160 };
     private readonly TextBlock statusText = new() { Margin = new Thickness(0, 0, 0, 8) };
     private readonly List<DiscoveredItem> items = [];
+    private bool isScanning;
 
     public IReadOnlyList<WizDevice> AddedDevices { get; private set; } = [];
 
@@ -87,22 +88,39 @@ public sealed class WizDiscoverDevicesDialog : Window
 
     private async Task RunDiscoveryAsync(IReadOnlyCollection<string> knownIpAddresses)
     {
+        if (isScanning)
+        {
+            return;
+        }
+
+        isScanning = true;
         resultsList.ItemsSource = null;
         items.Clear();
         statusText.Text = "Scanning local network...";
 
-        var found = new List<DiscoveredItem>();
-        await foreach (var device in client.DiscoverAsync())
+        try
         {
-            if (!knownIpAddresses.Contains(device.IpAddress))
+            var found = new List<DiscoveredItem>();
+            await foreach (var device in client.DiscoverAsync())
             {
-                found.Add(new DiscoveredItem(device));
+                if (!knownIpAddresses.Contains(device.IpAddress))
+                {
+                    found.Add(new DiscoveredItem(device));
+                }
             }
-        }
 
-        items.AddRange(found);
-        resultsList.ItemsSource = items;
-        statusText.Text = items.Count == 0 ? "No new devices found." : $"Found {items.Count} new device(s).";
+            items.AddRange(found);
+            resultsList.ItemsSource = items;
+            statusText.Text = items.Count == 0 ? "No new devices found." : $"Found {items.Count} new device(s).";
+        }
+        catch (Exception ex)
+        {
+            statusText.Text = $"Discovery failed: {ex.Message}";
+        }
+        finally
+        {
+            isScanning = false;
+        }
     }
 
     private void OnAddSelected()
