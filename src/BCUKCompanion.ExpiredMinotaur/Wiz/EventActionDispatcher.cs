@@ -66,42 +66,29 @@ public sealed class EventActionDispatcher(Func<WizConfig> configProvider, WizCli
 
     private async Task<bool> SendActionAsync(WizAction action, WizDevice device, CancellationToken cancellationToken)
     {
-        switch (action.ActionKind)
+        if (action.ActionKind == WizActionKind.Toggle)
         {
-            case WizActionKind.TurnOn:
-                return await client.SetPilotAsync(device.IpAddress, new { state = true }, cancellationToken: cancellationToken)
-                    .ConfigureAwait(false);
-
-            case WizActionKind.TurnOff:
-                return await client.SetPilotAsync(device.IpAddress, new { state = false }, cancellationToken: cancellationToken)
-                    .ConfigureAwait(false);
-
-            case WizActionKind.Toggle:
-                var status = await client.GetPilotAsync(device.IpAddress, cancellationToken: cancellationToken).ConfigureAwait(false);
-                if (status is null)
-                {
-                    return false;
-                }
-                return await client.SetPilotAsync(device.IpAddress, new { state = !status.State }, cancellationToken: cancellationToken)
-                    .ConfigureAwait(false);
-
-            case WizActionKind.SetBrightness:
-                return await client.SetPilotAsync(
-                    device.IpAddress, new { state = true, dimming = action.Brightness }, cancellationToken: cancellationToken)
-                    .ConfigureAwait(false);
-
-            case WizActionKind.SetColor:
-                return await client.SetPilotAsync(
-                    device.IpAddress, new { state = true, r = action.R, g = action.G, b = action.B }, cancellationToken: cancellationToken)
-                    .ConfigureAwait(false);
-
-            case WizActionKind.SetColorTemperature:
-                return await client.SetPilotAsync(
-                    device.IpAddress, new { state = true, temp = action.ColorTemperatureKelvin }, cancellationToken: cancellationToken)
-                    .ConfigureAwait(false);
-
-            default:
+            var status = await client.GetPilotAsync(device.IpAddress, cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (status is null)
+            {
                 return false;
+            }
+
+            return await client.SetPilotAsync(device.IpAddress, new { state = !status.State }, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
         }
+
+        object? payload = action.ActionKind switch
+        {
+            WizActionKind.TurnOn => new { state = true },
+            WizActionKind.TurnOff => new { state = false },
+            WizActionKind.SetBrightness => new { state = true, dimming = action.Brightness },
+            WizActionKind.SetColor => new { state = true, r = action.R, g = action.G, b = action.B },
+            WizActionKind.SetColorTemperature => new { state = true, temp = action.ColorTemperatureKelvin },
+            _ => null,
+        };
+
+        return payload is not null
+            && await client.SetPilotAsync(device.IpAddress, payload, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 }
