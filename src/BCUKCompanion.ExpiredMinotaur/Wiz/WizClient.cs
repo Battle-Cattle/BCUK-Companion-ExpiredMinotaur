@@ -79,7 +79,7 @@ public sealed class WizClient
 
             return new WizPilotStatus(state, dimming, r, g, b, temp);
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
         {
             return null;
         }
@@ -129,7 +129,7 @@ public sealed class WizClient
                     moduleName = moduleNameEl.GetString();
                 }
             }
-            catch (JsonException)
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
             {
                 continue;
             }
