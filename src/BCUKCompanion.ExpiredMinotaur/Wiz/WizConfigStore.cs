@@ -29,6 +29,7 @@ public sealed class WizConfigStore
         }
         catch (JsonException)
         {
+            TryBackUpCorruptConfig();
             return new WizConfig();
         }
     }
@@ -37,6 +38,20 @@ public sealed class WizConfigStore
     {
         var directory = Path.GetDirectoryName(ConfigFilePath)!;
         Directory.CreateDirectory(directory);
-        File.WriteAllText(ConfigFilePath, JsonSerializer.Serialize(config, SerializerOptions));
+
+        var tempPath = ConfigFilePath + ".tmp";
+        File.WriteAllText(tempPath, JsonSerializer.Serialize(config, SerializerOptions));
+        File.Move(tempPath, ConfigFilePath, overwrite: true);
+    }
+
+    private void TryBackUpCorruptConfig()
+    {
+        try
+        {
+            File.Copy(ConfigFilePath, ConfigFilePath + ".bak", overwrite: true);
+        }
+        catch (IOException)
+        {
+        }
     }
 }
