@@ -1,5 +1,11 @@
 using System.Windows;
 using System.Windows.Controls;
+using Button = System.Windows.Controls.Button;
+using CheckBox = System.Windows.Controls.CheckBox;
+using ComboBox = System.Windows.Controls.ComboBox;
+using HorizontalAlignment = System.Windows.HorizontalAlignment;
+using Orientation = System.Windows.Controls.Orientation;
+using TextBox = System.Windows.Controls.TextBox;
 
 namespace BCUKCompanion.ExpiredMinotaur.Wiz.UI;
 

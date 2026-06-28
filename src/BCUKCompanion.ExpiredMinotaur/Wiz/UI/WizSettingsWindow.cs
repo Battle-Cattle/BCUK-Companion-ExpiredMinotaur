@@ -2,6 +2,13 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using BCUKCompanion.Core.Models;
+using Button = System.Windows.Controls.Button;
+using ComboBox = System.Windows.Controls.ComboBox;
+using HorizontalAlignment = System.Windows.HorizontalAlignment;
+using ListBox = System.Windows.Controls.ListBox;
+using MessageBox = System.Windows.MessageBox;
+using Orientation = System.Windows.Controls.Orientation;
+using TabControl = System.Windows.Controls.TabControl;
 
 namespace BCUKCompanion.ExpiredMinotaur.Wiz.UI;
 

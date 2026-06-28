@@ -1,5 +1,10 @@
 using System.Windows;
 using System.Windows.Controls;
+using Button = System.Windows.Controls.Button;
+using HorizontalAlignment = System.Windows.HorizontalAlignment;
+using ListBox = System.Windows.Controls.ListBox;
+using Orientation = System.Windows.Controls.Orientation;
+using SelectionMode = System.Windows.Controls.SelectionMode;
 
 namespace BCUKCompanion.ExpiredMinotaur.Wiz.UI;
 
