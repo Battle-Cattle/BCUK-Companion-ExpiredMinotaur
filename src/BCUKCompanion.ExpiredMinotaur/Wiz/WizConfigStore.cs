@@ -50,7 +50,7 @@ public sealed class WizConfigStore
         {
             File.Copy(ConfigFilePath, ConfigFilePath + ".bak", overwrite: true);
         }
-        catch (IOException)
+        catch (Exception)
         {
         }
     }
