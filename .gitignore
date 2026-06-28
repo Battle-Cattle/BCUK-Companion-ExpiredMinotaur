@@ -1,0 +1,26 @@
+# Build results
+bin/
+obj/
+out/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+
+# Test results
+[Tt]est[Rr]esult*/
+*.trx
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Local environment overrides
+*.local.json
