@@ -11,9 +11,24 @@
     <AssemblyName>BCUKCompanion.ExpiredMinotaur</AssemblyName>
   </PropertyGroup>
 
-  <ItemGroup>
+  <!--
+    UseLocalCore is off unless a local, untracked .csproj.user file turns it on (see
+    BCUKCompanion.ExpiredMinotaur.csproj.user, which is *.user-gitignored). This keeps the
+    sibling-checkout dev wiring out of source control entirely, so CI and every other clone
+    always build against the published, pinned PackageReference versions below.
+  -->
+  <PropertyGroup>
+    <UseLocalCore Condition="'$(UseLocalCore)' == ''">false</UseLocalCore>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(UseLocalCore)' != 'true'">
     <PackageReference Include="BCUKCompanion.Core" Version="0.2.0" />
     <PackageReference Include="BCUKCompanion.TrayApp.Shell" Version="0.2.0" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseLocalCore)' == 'true'">
+    <ProjectReference Include="..\..\..\BCUK-Companion-Core\src\BCUKCompanion.Core\BCUKCompanion.Core.csproj" />
+    <ProjectReference Include="..\..\..\BCUK-Companion-Core\src\BCUKCompanion.TrayApp.Shell\BCUKCompanion.TrayApp.Shell.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -21,5 +36,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+
+  <Import Project="$(MSBuildThisFileName).user" Condition="Exists('$(MSBuildThisFileName).user')" />
 
 </Project>
