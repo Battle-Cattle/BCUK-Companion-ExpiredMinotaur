@@ -1,5 +1,7 @@
 using System.Windows;
+using BCUKCompanion.Core.Actions;
 using BCUKCompanion.ExpiredMinotaur.Wiz;
+using BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 using BCUKCompanion.ExpiredMinotaur.Wiz.UI;
 using BCUKCompanion.TrayApp;
 
@@ -12,9 +14,19 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
-        var store = new WizConfigStore(DataFolderName);
+        var registry = new EventActionTypeRegistry();
+        registry.Register<WizTurnOnAction>(WizTurnOnAction.ActionKind);
+        registry.Register<WizTurnOffAction>(WizTurnOffAction.ActionKind);
+        registry.Register<WizToggleAction>(WizToggleAction.ActionKind);
+        registry.Register<WizSetBrightnessAction>(WizSetBrightnessAction.ActionKind);
+        registry.Register<WizSetColorAction>(WizSetColorAction.ActionKind);
+        registry.Register<WizSetColorTemperatureAction>(WizSetColorTemperatureAction.ActionKind);
+
+        var store = new WizConfigStore(DataFolderName, registry);
         var client = new WizClient();
-        var dispatcher = new EventActionDispatcher(store.Load, client);
+        var dispatcher = new EventActionDispatcher(
+            () => store.Load().Mappings,
+            () => new WizActionContext(client, store.Load().Devices));
 
         WizSettingsWindow? settingsWindow = null;
 

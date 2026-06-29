@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
+using BCUKCompanion.Core.Actions;
 using BCUKCompanion.Core.Models;
+using BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 using Button = System.Windows.Controls.Button;
 using ComboBox = System.Windows.Controls.ComboBox;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
@@ -30,9 +32,9 @@ public sealed class WizSettingsWindow : Window
     private readonly ComboBox rewardTitleCombo = new() { IsEditable = true, Margin = new Thickness(0, 0, 0, 8) };
     private readonly TextBlock statusText = new() { Margin = new Thickness(12, 0, 12, 12) };
 
-    private sealed class ActionListItem(WizAction action, string display)
+    private sealed class ActionListItem(IEventAction action, string display)
     {
-        public WizAction Action { get; } = action;
+        public IEventAction Action { get; } = action;
 
         public override string ToString() => display;
     }
@@ -45,7 +47,7 @@ public sealed class WizSettingsWindow : Window
         var config = configStore.Load();
         devices = new ObservableCollection<WizDevice>(config.Devices);
         mappings = new ObservableCollection<EventActionMapping>(config.Mappings);
-        dispatcher = new EventActionDispatcher(BuildConfig, client);
+        dispatcher = new EventActionDispatcher(() => BuildConfig().Mappings, BuildContext);
 
         Title = "Wiz Devices";
         Width = 640;
@@ -78,6 +80,8 @@ public sealed class WizSettingsWindow : Window
     }
 
     private WizConfig BuildConfig() => new() { Devices = devices.ToList(), Mappings = mappings.ToList() };
+
+    private WizActionContext BuildContext() => new(client, devices);
 
     private UIElement BuildDevicesTab()
     {
@@ -195,30 +199,10 @@ public sealed class WizSettingsWindow : Window
             return;
         }
 
+        var context = BuildContext();
         actionsList.ItemsSource = mapping.Actions
-            .Select(a => new ActionListItem(a, FormatAction(a)))
+            .Select(a => new ActionListItem(a, a.Describe(context)))
             .ToList();
-    }
-
-    private string FormatAction(WizAction action)
-    {
-        if (action.ActionKind == WizActionKind.Delay)
-        {
-            return $"Delay {action.DelaySeconds}s";
-        }
-
-        var device = devices.FirstOrDefault(d => d.Id == action.DeviceId);
-        var deviceName = device?.Name ?? "(unknown device)";
-
-        var detail = action.ActionKind switch
-        {
-            WizActionKind.SetBrightness => $"SetBrightness {action.Brightness}%",
-            WizActionKind.SetColor => $"SetColor ({action.R},{action.G},{action.B})",
-            WizActionKind.SetColorTemperature => $"SetColorTemperature {action.ColorTemperatureKelvin}K",
-            _ => action.ActionKind.ToString(),
-        };
-
-        return $"{deviceName}: {detail}";
     }
 
     private void OnAddDevice()
@@ -257,11 +241,14 @@ public sealed class WizSettingsWindow : Window
 
             devices[index] = updated;
 
+            var context = BuildContext();
             var removedActionCount = 0;
             foreach (var mapping in mappings)
             {
                 removedActionCount += mapping.Actions.RemoveAll(
-                    a => a.DeviceId == updated.Id && WizAction.Validate(a, updated).Count > 0);
+                    a => a is WizDeviceActionBase deviceAction
+                        && deviceAction.DeviceId == updated.Id
+                        && deviceAction.Validate(context).Count > 0);
             }
 
             RefreshActionsList();
@@ -284,7 +271,8 @@ public sealed class WizSettingsWindow : Window
         var removedActionCount = 0;
         foreach (var mapping in mappings)
         {
-            removedActionCount += mapping.Actions.RemoveAll(a => a.DeviceId == selected.Id);
+            removedActionCount += mapping.Actions.RemoveAll(
+                a => a is WizDeviceActionBase deviceAction && deviceAction.DeviceId == selected.Id);
         }
 
         RefreshActionsList();
@@ -422,8 +410,9 @@ public sealed class WizSettingsWindow : Window
             return;
         }
 
+        var context = BuildContext();
         var lines = result.ActionResults.Select(r =>
-            $"{FormatAction(r.Action)}: {(r.Success ? "OK" : r.ErrorMessage ?? "Failed")}");
+            $"{r.Action.Describe(context)}: {(r.Success ? "OK" : r.ErrorMessage ?? "Failed")}");
         MessageBox.Show(this, string.Join("\n", lines), $"Test results: {result.RewardTitle}");
         statusText.Text = result.AllSucceeded ? "Test succeeded." : "Test completed with errors.";
     }
