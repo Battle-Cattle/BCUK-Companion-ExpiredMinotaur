@@ -38,8 +38,12 @@ public sealed class EventActionDispatcher(Func<WizConfig> configProvider, WizCli
             .SelectMany(m => m.Actions)
             .ToList();
 
-        var results = await Task.WhenAll(actions.Select(action => ExecuteActionAsync(action, config, cancellationToken)))
-            .ConfigureAwait(false);
+        // Sequential, not parallel: a Delay action only delays the actions queued after it.
+        var results = new List<WizActionResult>(actions.Count);
+        foreach (var action in actions)
+        {
+            results.Add(await ExecuteActionAsync(action, config, cancellationToken).ConfigureAwait(false));
+        }
 
         return new EventDispatchResult(rewardTitle, results);
     }
@@ -48,6 +52,18 @@ public sealed class EventActionDispatcher(Func<WizConfig> configProvider, WizCli
     {
         try
         {
+            if (action.ActionKind == WizActionKind.Delay)
+            {
+                var delayErrors = WizAction.Validate(action, device: null);
+                if (delayErrors.Count > 0)
+                {
+                    return new WizActionResult(action, false, string.Join("; ", delayErrors));
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(action.DelaySeconds!.Value), cancellationToken).ConfigureAwait(false);
+                return new WizActionResult(action, true, null);
+            }
+
             var device = config.Devices.FirstOrDefault(d => d.Id == action.DeviceId);
             var errors = WizAction.Validate(action, device);
             if (errors.Count > 0)
