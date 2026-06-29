@@ -202,6 +202,11 @@ public sealed class WizSettingsWindow : Window
 
     private string FormatAction(WizAction action)
     {
+        if (action.ActionKind == WizActionKind.Delay)
+        {
+            return $"Delay {action.DelaySeconds}s";
+        }
+
         var device = devices.FirstOrDefault(d => d.Id == action.DeviceId);
         var deviceName = device?.Name ?? "(unknown device)";
 

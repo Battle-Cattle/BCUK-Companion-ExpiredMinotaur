@@ -8,6 +8,7 @@ using ComboBox = System.Windows.Controls.ComboBox;
 using Color = System.Windows.Media.Color;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
 using Orientation = System.Windows.Controls.Orientation;
+using TextBox = System.Windows.Controls.TextBox;
 
 namespace BCUKCompanion.ExpiredMinotaur.Wiz.UI;
 
@@ -31,6 +32,10 @@ public sealed class WizActionEditDialog : Window
     private readonly StackPanel colorTempPanel;
     private readonly Slider colorTempSlider = new() { Minimum = WizAction.MinColorTemperatureKelvin, Maximum = WizAction.MaxColorTemperatureKelvin, Value = 4000, TickFrequency = 100, IsSnapToTickEnabled = true };
     private readonly TextBlock colorTempValueText = new();
+
+    private readonly StackPanel devicePanel;
+    private readonly StackPanel delayPanel;
+    private readonly TextBox delayBox = new() { Text = "5" };
 
     public WizAction? Result { get; private set; }
 
@@ -108,6 +113,25 @@ public sealed class WizActionEditDialog : Window
         };
         DockPanel.SetDock(colorTempValueText, Dock.Right);
 
+        delayPanel = new StackPanel
+        {
+            Margin = new Thickness(0, 0, 0, 8),
+            Children =
+            {
+                new TextBlock { Text = $"Delay (seconds, {WizAction.MinDelaySeconds}-{WizAction.MaxDelaySeconds})" },
+                delayBox,
+            },
+        };
+
+        devicePanel = new StackPanel
+        {
+            Children =
+            {
+                new TextBlock { Text = "Device" },
+                deviceCombo,
+            },
+        };
+
         var okButton = new Button { Content = "OK", Width = 80, Margin = new Thickness(0, 0, 8, 0) };
         okButton.Click += (_, _) => OnOk();
 
@@ -127,13 +151,13 @@ public sealed class WizActionEditDialog : Window
             Margin = new Thickness(12),
             Children =
             {
-                new TextBlock { Text = "Device" },
-                deviceCombo,
+                devicePanel,
                 new TextBlock { Text = "Action" },
                 actionKindCombo,
                 brightnessPanel,
                 colorPanel,
                 colorTempPanel,
+                delayPanel,
                 errorText,
                 buttonPanel,
             },
@@ -158,6 +182,10 @@ public sealed class WizActionEditDialog : Window
             {
                 colorTempSlider.Value = temp;
             }
+            if (existing.DelaySeconds is { } delay)
+            {
+                delayBox.Text = delay.ToString();
+            }
         }
         else if (devices.Count > 0)
         {
@@ -173,9 +201,9 @@ public sealed class WizActionEditDialog : Window
     {
         var device = SelectedDevice;
         var kinds = device is null
-            ? Array.Empty<WizActionKind>()
+            ? new[] { WizActionKind.Delay }
             : device.DeviceType == WizDeviceType.Plug
-                ? new[] { WizActionKind.TurnOn, WizActionKind.TurnOff, WizActionKind.Toggle }
+                ? new[] { WizActionKind.TurnOn, WizActionKind.TurnOff, WizActionKind.Toggle, WizActionKind.Delay }
                 : Enum.GetValues<WizActionKind>()
                     .Where(kind => IsKindSupported(kind, device))
                     .ToArray();
@@ -189,7 +217,7 @@ public sealed class WizActionEditDialog : Window
 
     private static bool IsKindSupported(WizActionKind kind, WizDevice device)
     {
-        if (kind is WizActionKind.TurnOn or WizActionKind.TurnOff or WizActionKind.Toggle)
+        if (kind is WizActionKind.TurnOn or WizActionKind.TurnOff or WizActionKind.Toggle or WizActionKind.Delay)
         {
             return true;
         }
@@ -209,6 +237,8 @@ public sealed class WizActionEditDialog : Window
         brightnessPanel.Visibility = kind == WizActionKind.SetBrightness ? Visibility.Visible : Visibility.Collapsed;
         colorPanel.Visibility = kind == WizActionKind.SetColor ? Visibility.Visible : Visibility.Collapsed;
         colorTempPanel.Visibility = kind == WizActionKind.SetColorTemperature ? Visibility.Visible : Visibility.Collapsed;
+        delayPanel.Visibility = kind == WizActionKind.Delay ? Visibility.Visible : Visibility.Collapsed;
+        devicePanel.Visibility = kind == WizActionKind.Delay ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void UpdateColorSwatch()
@@ -218,8 +248,35 @@ public sealed class WizActionEditDialog : Window
 
     private void OnOk()
     {
+        if (actionKindCombo.SelectedItem is not WizActionKind kind)
+        {
+            errorText.Text = "Select an action.";
+            return;
+        }
+
+        if (kind == WizActionKind.Delay)
+        {
+            if (!int.TryParse(delayBox.Text.Trim(), out var delaySeconds))
+            {
+                errorText.Text = "Enter a whole number of seconds.";
+                return;
+            }
+
+            var delayAction = new WizAction(Guid.Empty, WizActionKind.Delay, DelaySeconds: delaySeconds);
+            var delayErrors = WizAction.Validate(delayAction, device: null);
+            if (delayErrors.Count > 0)
+            {
+                errorText.Text = string.Join("\n", delayErrors);
+                return;
+            }
+
+            Result = delayAction;
+            DialogResult = true;
+            return;
+        }
+
         var device = SelectedDevice;
-        if (device is null || actionKindCombo.SelectedItem is not WizActionKind kind)
+        if (device is null)
         {
             errorText.Text = "Select a device and action.";
             return;

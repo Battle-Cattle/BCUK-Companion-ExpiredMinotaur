@@ -14,6 +14,7 @@ public enum WizActionKind
     SetBrightness,
     SetColor,
     SetColorTemperature,
+    Delay,
 }
 
 public sealed record WizDevice(
@@ -35,16 +36,28 @@ public sealed record WizAction(
     byte? R = null,
     byte? G = null,
     byte? B = null,
-    int? ColorTemperatureKelvin = null)
+    int? ColorTemperatureKelvin = null,
+    int? DelaySeconds = null)
 {
     public const int MinBrightness = 1;
     public const int MaxBrightness = 100;
     public const int MinColorTemperatureKelvin = 2200;
     public const int MaxColorTemperatureKelvin = 6500;
+    public const int MinDelaySeconds = 1;
+    public const int MaxDelaySeconds = 3600;
 
     public static IReadOnlyList<string> Validate(WizAction action, WizDevice? device)
     {
         var errors = new List<string>();
+
+        if (action.ActionKind == WizActionKind.Delay)
+        {
+            if (action.DelaySeconds is null || action.DelaySeconds < MinDelaySeconds || action.DelaySeconds > MaxDelaySeconds)
+            {
+                errors.Add($"Delay must be between {MinDelaySeconds} and {MaxDelaySeconds} seconds.");
+            }
+            return errors;
+        }
 
         if (device is null)
         {
