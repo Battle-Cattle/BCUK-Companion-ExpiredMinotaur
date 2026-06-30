@@ -261,40 +261,39 @@ public sealed class WizActionEditDialog : Window
 
     private void OnOk()
     {
+        var (action, error) = BuildAction();
+        if (error is not null)
+        {
+            errorText.Text = error;
+            return;
+        }
+        Result = action;
+        DialogResult = true;
+    }
+
+    private (IEventAction? action, string? error) BuildAction()
+    {
         if (actionKindCombo.SelectedItem is not WizActionKindOption option)
-        {
-            errorText.Text = "Select an action.";
-            return;
-        }
+            return (null, "Select an action.");
 
-        if (option.Kind == DelayAction.ActionKind)
-        {
-            if (!int.TryParse(delayBox.Text.Trim(), out var delaySeconds))
-            {
-                errorText.Text = "Enter a whole number of seconds.";
-                return;
-            }
+        return option.Kind == DelayAction.ActionKind
+            ? BuildDelayAction()
+            : BuildDeviceAction(option);
+    }
 
-            var delayAction = new DelayAction { DelaySeconds = delaySeconds };
-            var delayErrors = delayAction.Validate(context);
-            if (delayErrors.Count > 0)
-            {
-                errorText.Text = string.Join("\n", delayErrors);
-                return;
-            }
+    private (IEventAction?, string?) BuildDelayAction()
+    {
+        if (!int.TryParse(delayBox.Text.Trim(), out var seconds))
+            return (null, "Enter a whole number of seconds.");
+        var action = new DelayAction { DelaySeconds = seconds };
+        var errors = action.Validate(context);
+        return errors.Count > 0 ? (null, string.Join("\n", errors)) : (action, null);
+    }
 
-            Result = delayAction;
-            DialogResult = true;
-            return;
-        }
-
-        var device = SelectedDevice;
-        if (device is null)
-        {
-            errorText.Text = "Select a device and action.";
-            return;
-        }
-
+    private (IEventAction?, string?) BuildDeviceAction(WizActionKindOption option)
+    {
+        if (SelectedDevice is not { } device)
+            return (null, "Select a device and action.");
         IEventAction action = option.Kind switch
         {
             WizTurnOnAction.ActionKind => new WizTurnOnAction { DeviceId = device.Id },
@@ -305,15 +304,7 @@ public sealed class WizActionEditDialog : Window
             WizSetColorTemperatureAction.ActionKind => new WizSetColorTemperatureAction { DeviceId = device.Id, ColorTemperatureKelvin = (int)colorTempSlider.Value },
             _ => throw new InvalidOperationException($"Unknown action kind \"{option.Kind}\"."),
         };
-
         var errors = action.Validate(context);
-        if (errors.Count > 0)
-        {
-            errorText.Text = string.Join("\n", errors);
-            return;
-        }
-
-        Result = action;
-        DialogResult = true;
+        return errors.Count > 0 ? (null, string.Join("\n", errors)) : (action, null);
     }
 }

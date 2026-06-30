@@ -242,18 +242,8 @@ public sealed class WizSettingsWindow : Window
             devices[index] = updated;
 
             var context = BuildContext();
-            var removedActionCount = 0;
-            foreach (var mapping in mappings.ToList())
-            {
-                var remaining = mapping.Actions
-                    .Where(a => !(a is WizDeviceActionBase deviceAction
-                        && deviceAction.DeviceId == updated.Id
-                        && deviceAction.Validate(context).Count > 0))
-                    .ToList();
-                removedActionCount += mapping.Actions.Count - remaining.Count;
-                if (remaining.Count != mapping.Actions.Count)
-                    ReplaceMappingActions(mapping, remaining);
-            }
+            var removedActionCount = StripMatchingActions(
+                a => a is WizDeviceActionBase d && d.DeviceId == updated.Id && d.Validate(context).Count > 0);
 
             RefreshActionsList();
             statusText.Text = removedActionCount > 0
@@ -272,16 +262,8 @@ public sealed class WizSettingsWindow : Window
 
         devices.Remove(selected);
 
-        var removedActionCount = 0;
-        foreach (var mapping in mappings.ToList())
-        {
-            var remaining = mapping.Actions
-                .Where(a => !(a is WizDeviceActionBase deviceAction && deviceAction.DeviceId == selected.Id))
-                .ToList();
-            removedActionCount += mapping.Actions.Count - remaining.Count;
-            if (remaining.Count != mapping.Actions.Count)
-                ReplaceMappingActions(mapping, remaining);
-        }
+        var removedActionCount = StripMatchingActions(
+            a => a is WizDeviceActionBase d && d.DeviceId == selected.Id);
 
         RefreshActionsList();
         statusText.Text = removedActionCount > 0
@@ -427,6 +409,19 @@ public sealed class WizSettingsWindow : Window
             $"{r.Action.Describe(context)}: {(r.Success ? "OK" : r.ErrorMessage ?? "Failed")}");
         MessageBox.Show(this, string.Join("\n", lines), $"Test results: {result.RewardTitle}");
         statusText.Text = result.AllSucceeded ? "Test succeeded." : "Test completed with errors.";
+    }
+
+    private int StripMatchingActions(Func<IEventAction, bool> shouldRemove)
+    {
+        var removedCount = 0;
+        foreach (var mapping in mappings.ToList())
+        {
+            var remaining = mapping.Actions.Where(a => !shouldRemove(a)).ToList();
+            removedCount += mapping.Actions.Count - remaining.Count;
+            if (remaining.Count != mapping.Actions.Count)
+                ReplaceMappingActions(mapping, remaining);
+        }
+        return removedCount;
     }
 
     private void ReplaceMappingActions(EventActionMapping mapping, List<IEventAction> newActions)
