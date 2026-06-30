@@ -243,12 +243,16 @@ public sealed class WizSettingsWindow : Window
 
             var context = BuildContext();
             var removedActionCount = 0;
-            foreach (var mapping in mappings)
+            foreach (var mapping in mappings.ToList())
             {
-                removedActionCount += mapping.Actions.RemoveAll(
-                    a => a is WizDeviceActionBase deviceAction
+                var remaining = mapping.Actions
+                    .Where(a => !(a is WizDeviceActionBase deviceAction
                         && deviceAction.DeviceId == updated.Id
-                        && deviceAction.Validate(context).Count > 0);
+                        && deviceAction.Validate(context).Count > 0))
+                    .ToList();
+                removedActionCount += mapping.Actions.Count - remaining.Count;
+                if (remaining.Count != mapping.Actions.Count)
+                    ReplaceMappingActions(mapping, remaining);
             }
 
             RefreshActionsList();
@@ -269,10 +273,14 @@ public sealed class WizSettingsWindow : Window
         devices.Remove(selected);
 
         var removedActionCount = 0;
-        foreach (var mapping in mappings)
+        foreach (var mapping in mappings.ToList())
         {
-            removedActionCount += mapping.Actions.RemoveAll(
-                a => a is WizDeviceActionBase deviceAction && deviceAction.DeviceId == selected.Id);
+            var remaining = mapping.Actions
+                .Where(a => !(a is WizDeviceActionBase deviceAction && deviceAction.DeviceId == selected.Id))
+                .ToList();
+            removedActionCount += mapping.Actions.Count - remaining.Count;
+            if (remaining.Count != mapping.Actions.Count)
+                ReplaceMappingActions(mapping, remaining);
         }
 
         RefreshActionsList();
@@ -345,7 +353,7 @@ public sealed class WizSettingsWindow : Window
         var dialog = new WizActionEditDialog(devices) { Owner = this };
         if (dialog.ShowDialog() == true && dialog.Result is { } action)
         {
-            mapping.Actions.Add(action);
+            ReplaceMappingActions(mapping, [.. mapping.Actions, action]);
             RefreshActionsList();
         }
     }
@@ -368,7 +376,9 @@ public sealed class WizSettingsWindow : Window
         var dialog = new WizActionEditDialog(devices, selected.Action) { Owner = this };
         if (dialog.ShowDialog() == true && dialog.Result is { } updated)
         {
-            mapping.Actions[index] = updated;
+            var newActions = mapping.Actions.ToList();
+            newActions[index] = updated;
+            ReplaceMappingActions(mapping, newActions);
             RefreshActionsList();
         }
     }
@@ -387,7 +397,9 @@ public sealed class WizSettingsWindow : Window
             return;
         }
 
-        mapping.Actions.RemoveAt(actionsList.SelectedIndex);
+        var newActions = mapping.Actions.ToList();
+        newActions.RemoveAt(actionsList.SelectedIndex);
+        ReplaceMappingActions(mapping, newActions);
         RefreshActionsList();
     }
 
@@ -415,6 +427,16 @@ public sealed class WizSettingsWindow : Window
             $"{r.Action.Describe(context)}: {(r.Success ? "OK" : r.ErrorMessage ?? "Failed")}");
         MessageBox.Show(this, string.Join("\n", lines), $"Test results: {result.RewardTitle}");
         statusText.Text = result.AllSucceeded ? "Test succeeded." : "Test completed with errors.";
+    }
+
+    private void ReplaceMappingActions(EventActionMapping mapping, List<IEventAction> newActions)
+    {
+        var idx = mappings.IndexOf(mapping);
+        if (idx < 0) return;
+        var updated = mapping with { Actions = newActions };
+        mappings[idx] = updated;
+        if (ReferenceEquals(mappingsList.SelectedItem, mapping))
+            mappingsList.SelectedItem = updated;
     }
 
     private void OnSave()
