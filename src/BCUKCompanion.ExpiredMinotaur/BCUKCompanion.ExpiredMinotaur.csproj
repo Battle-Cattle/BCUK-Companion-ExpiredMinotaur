@@ -22,8 +22,8 @@
   </PropertyGroup>
 
   <ItemGroup Condition="'$(UseLocalCore)' != 'true'">
-    <PackageReference Include="BCUKCompanion.Core" Version="0.2.0" />
-    <PackageReference Include="BCUKCompanion.TrayApp.Shell" Version="0.2.0" />
+    <PackageReference Include="BCUKCompanion.Core" Version="0.3.0" />
+    <PackageReference Include="BCUKCompanion.TrayApp.Shell" Version="0.3.0" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(UseLocalCore)' == 'true'">
