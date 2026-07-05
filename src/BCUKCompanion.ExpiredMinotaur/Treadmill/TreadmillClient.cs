@@ -123,7 +123,15 @@ public sealed class TreadmillClient : IDisposable
         var completed = await Task.WhenAny(readingTask, Task.Delay(FirstReadingTimeout, cancellationToken)).ConfigureAwait(false);
         if (completed == readingTask)
         {
-            TargetSpeedKmh = readingTask.Result;
+            // The belt may genuinely be stopped (reporting 0 km/h) despite the "already
+            // running" assumption — clamp into range so keep-alive never sends a target
+            // speed below the device's minimum, which SetTargetSpeedAsync rejects.
+            var reading = readingTask.Result;
+            TargetSpeedKmh = SnapAndClamp(reading);
+            if (reading < MinSpeedKmh)
+            {
+                RaiseStatus($"Belt reports {reading:0.0} km/h (stopped) — starting keep-alive at the minimum, {MinSpeedKmh:0.0} km/h.");
+            }
         }
         else
         {
