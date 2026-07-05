@@ -55,41 +55,38 @@ internal static class Program
             },
             AdditionalMenuItems = new[]
             {
-                new TrayMenuItem("Wiz Devices...", () =>
-                {
-                    if (settingsWindow is null)
-                    {
-                        settingsWindow = new WizSettingsWindow(store, client);
-                        settingsWindow.Closed += (_, _) => settingsWindow = null;
-                        settingsWindow.Show();
-                    }
-                    else
-                    {
-                        if (settingsWindow.WindowState == WindowState.Minimized)
-                        {
-                            settingsWindow.WindowState = WindowState.Normal;
-                        }
-                        settingsWindow.Activate();
-                    }
-                }),
-                new TrayMenuItem("Treadmill...", () =>
-                {
-                    if (treadmillSettingsWindow is null)
-                    {
-                        treadmillSettingsWindow = new TreadmillSettingsWindow(treadmillStore, treadmillClient);
-                        treadmillSettingsWindow.Closed += (_, _) => treadmillSettingsWindow = null;
-                        treadmillSettingsWindow.Show();
-                    }
-                    else
-                    {
-                        if (treadmillSettingsWindow.WindowState == WindowState.Minimized)
-                        {
-                            treadmillSettingsWindow.WindowState = WindowState.Normal;
-                        }
-                        treadmillSettingsWindow.Activate();
-                    }
-                }),
+                CreateSettingsMenuItem("Wiz Devices...",
+                    () => new WizSettingsWindow(store, client),
+                    () => settingsWindow, w => settingsWindow = w),
+                CreateSettingsMenuItem("Treadmill...",
+                    () => new TreadmillSettingsWindow(treadmillStore, treadmillClient),
+                    () => treadmillSettingsWindow, w => treadmillSettingsWindow = w),
             },
+        });
+    }
+
+    private static TrayMenuItem CreateSettingsMenuItem<TWindow>(
+        string label, Func<TWindow> createWindow, Func<TWindow?> getWindow, Action<TWindow?> setWindow)
+        where TWindow : Window
+    {
+        return new TrayMenuItem(label, () =>
+        {
+            var window = getWindow();
+            if (window is null)
+            {
+                window = createWindow();
+                window.Closed += (_, _) => setWindow(null);
+                setWindow(window);
+                window.Show();
+            }
+            else
+            {
+                if (window.WindowState == WindowState.Minimized)
+                {
+                    window.WindowState = WindowState.Normal;
+                }
+                window.Activate();
+            }
         });
     }
 }
