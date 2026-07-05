@@ -54,16 +54,17 @@ public abstract class WizDeviceActionBase : IEventAction
 
     protected abstract object BuildPayload();
 
-    protected static List<string> ValidateCapabilityAndRange(
-        WizDevice device, bool supported, string unsupportedMessage,
-        int value, int min, int max, string outOfRangeMessage)
+    protected static List<string> ValidateCapabilityAndRange(CapabilityRangeCheck check)
     {
         var errors = new List<string>();
-        if (!supported) errors.Add(unsupportedMessage);
-        if (value < min || value > max) errors.Add(outOfRangeMessage);
+        if (!check.Supported) errors.Add(check.UnsupportedMessage);
+        if (check.Value < check.Min || check.Value > check.Max) errors.Add(check.OutOfRangeMessage);
         return errors;
     }
 
     protected virtual async Task<bool> SendAsync(WizClient client, WizDevice device, CancellationToken cancellationToken)
         => await client.SetPilotAsync(device.IpAddress, BuildPayload(), cancellationToken: cancellationToken).ConfigureAwait(false);
+
+    protected readonly record struct CapabilityRangeCheck(
+        bool Supported, string UnsupportedMessage, int Value, int Min, int Max, string OutOfRangeMessage);
 }

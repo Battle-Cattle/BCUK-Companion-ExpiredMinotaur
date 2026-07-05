@@ -18,10 +18,11 @@ public sealed class WizSetColorTemperatureAction : WizDeviceActionBase
     protected override string DescribeAction() => $"SetColorTemperature {ColorTemperatureKelvin}K";
 
     protected override IReadOnlyList<string> ValidateDeviceSpecific(WizDevice device)
-        => ValidateCapabilityAndRange(device, device.SupportsColorTemperature,
+        => ValidateCapabilityAndRange(new CapabilityRangeCheck(
+            device.SupportsColorTemperature,
             $"{device.Name} does not support color temperature.",
             ColorTemperatureKelvin, MinColorTemperatureKelvin, MaxColorTemperatureKelvin,
-            $"Color temperature must be between {MinColorTemperatureKelvin}K and {MaxColorTemperatureKelvin}K.");
+            $"Color temperature must be between {MinColorTemperatureKelvin}K and {MaxColorTemperatureKelvin}K."));
 
     protected override object BuildPayload() => new { state = true, temp = ColorTemperatureKelvin };
 }

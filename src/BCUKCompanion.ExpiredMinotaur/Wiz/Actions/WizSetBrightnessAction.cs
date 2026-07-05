@@ -18,10 +18,11 @@ public sealed class WizSetBrightnessAction : WizDeviceActionBase
     protected override string DescribeAction() => $"SetBrightness {Brightness}%";
 
     protected override IReadOnlyList<string> ValidateDeviceSpecific(WizDevice device)
-        => ValidateCapabilityAndRange(device, device.SupportsDimming,
+        => ValidateCapabilityAndRange(new CapabilityRangeCheck(
+            device.SupportsDimming,
             $"{device.Name} does not support brightness control.",
             Brightness, MinBrightness, MaxBrightness,
-            $"Brightness must be between {MinBrightness} and {MaxBrightness}.");
+            $"Brightness must be between {MinBrightness} and {MaxBrightness}."));
 
     protected override object BuildPayload() => new { state = true, dimming = Brightness };
 }
