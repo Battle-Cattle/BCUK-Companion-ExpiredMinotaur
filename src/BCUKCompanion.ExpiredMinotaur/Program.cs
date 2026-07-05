@@ -1,5 +1,8 @@
 using System.Windows;
 using BCUKCompanion.Core.Actions;
+using BCUKCompanion.ExpiredMinotaur.Treadmill;
+using BCUKCompanion.ExpiredMinotaur.Treadmill.Actions;
+using BCUKCompanion.ExpiredMinotaur.Treadmill.UI;
 using BCUKCompanion.ExpiredMinotaur.Wiz;
 using BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 using BCUKCompanion.ExpiredMinotaur.Wiz.UI;
@@ -21,6 +24,7 @@ internal static class Program
         registry.Register<WizSetBrightnessAction>(WizSetBrightnessAction.ActionKind);
         registry.Register<WizSetColorAction>(WizSetColorAction.ActionKind);
         registry.Register<WizSetColorTemperatureAction>(WizSetColorTemperatureAction.ActionKind);
+        registry.Register<TreadmillNudgeSpeedAction>(TreadmillNudgeSpeedAction.ActionKind);
 
         var store = new WizConfigStore(DataFolderName, registry);
         var client = new WizClient();
@@ -28,12 +32,23 @@ internal static class Program
             () => store.Load().Mappings,
             () => new WizActionContext(client, store.Load().Devices));
 
+        var treadmillStore = new TreadmillConfigStore(DataFolderName, registry);
+        var treadmillClient = new TreadmillClient();
+        var treadmillDispatcher = new EventActionDispatcher(
+            () => treadmillStore.Load().Mappings,
+            () => new TreadmillActionContext(treadmillClient));
+
         WizSettingsWindow? settingsWindow = null;
+        TreadmillSettingsWindow? treadmillSettingsWindow = null;
 
         CompanionTrayApplication.Run(new CompanionTrayAppOptions
         {
             DataFolderName = DataFolderName,
-            OnBotEvent = e => Task.Run(() => dispatcher.DispatchAsync(e)),
+            OnBotEvent = e =>
+            {
+                Task.Run(() => dispatcher.DispatchAsync(e));
+                Task.Run(() => treadmillDispatcher.DispatchAsync(e));
+            },
             AdditionalMenuItems = new[]
             {
                 new TrayMenuItem("Wiz Devices...", () =>
@@ -51,6 +66,23 @@ internal static class Program
                             settingsWindow.WindowState = WindowState.Normal;
                         }
                         settingsWindow.Activate();
+                    }
+                }),
+                new TrayMenuItem("Treadmill...", () =>
+                {
+                    if (treadmillSettingsWindow is null)
+                    {
+                        treadmillSettingsWindow = new TreadmillSettingsWindow(treadmillStore, treadmillClient);
+                        treadmillSettingsWindow.Closed += (_, _) => treadmillSettingsWindow = null;
+                        treadmillSettingsWindow.Show();
+                    }
+                    else
+                    {
+                        if (treadmillSettingsWindow.WindowState == WindowState.Minimized)
+                        {
+                            treadmillSettingsWindow.WindowState = WindowState.Normal;
+                        }
+                        treadmillSettingsWindow.Activate();
                     }
                 }),
             },
