@@ -122,55 +122,23 @@ public class FtmsDevice : IDisposable
         FitnessMachineStatus = await GetCharacteristicAsync(FtmsConstants.FitnessMachineStatus);
         SupportedSpeedRange = await GetCharacteristicAsync(FtmsConstants.SupportedSpeedRange);
 
-        if (ControlPoint != null)
-        {
-            _controlPointHandler = (s, args) =>
-            {
-                if (_disposed) return;
-                ControlPointIndicationReceived?.Invoke(this, ReadBuffer(args.CharacteristicValue));
-            };
-            ControlPoint.ValueChanged += _controlPointHandler;
-            var cccdStatus = await ControlPoint.WriteClientCharacteristicConfigurationDescriptorAsync(
-                GattClientCharacteristicConfigurationDescriptorValue.Indicate);
-            if (cccdStatus != GattCommunicationStatus.Success)
-                LastConnectWarnings.Add($"Control Point indicate subscription failed: {cccdStatus}. Control responses will never arrive.");
-        }
-        else
-        {
-            LastConnectWarnings.Add("Control Point (0x2AD9) characteristic not found — speed/start/stop writes are impossible.");
-        }
+        await SubscribeAsync(ControlPoint, GattClientCharacteristicConfigurationDescriptorValue.Indicate,
+            h => _controlPointHandler = h,
+            bytes => ControlPointIndicationReceived?.Invoke(this, bytes),
+            notFoundWarning: "Control Point (0x2AD9) characteristic not found — speed/start/stop writes are impossible.",
+            subscribeFailWarningFormat: "Control Point indicate subscription failed: {0}. Control responses will never arrive.");
 
-        if (TreadmillData != null)
-        {
-            _treadmillDataHandler = (s, args) =>
-            {
-                if (_disposed) return;
-                TreadmillDataReceived?.Invoke(this, ReadBuffer(args.CharacteristicValue));
-            };
-            TreadmillData.ValueChanged += _treadmillDataHandler;
-            var cccdStatus = await TreadmillData.WriteClientCharacteristicConfigurationDescriptorAsync(
-                GattClientCharacteristicConfigurationDescriptorValue.Notify);
-            if (cccdStatus != GattCommunicationStatus.Success)
-                LastConnectWarnings.Add($"Treadmill Data notify subscription failed: {cccdStatus}. Current speed readback will never update.");
-        }
-        else
-        {
-            LastConnectWarnings.Add("Treadmill Data (0x2ACD) characteristic not found — current speed readback disabled.");
-        }
+        await SubscribeAsync(TreadmillData, GattClientCharacteristicConfigurationDescriptorValue.Notify,
+            h => _treadmillDataHandler = h,
+            bytes => TreadmillDataReceived?.Invoke(this, bytes),
+            notFoundWarning: "Treadmill Data (0x2ACD) characteristic not found — current speed readback disabled.",
+            subscribeFailWarningFormat: "Treadmill Data notify subscription failed: {0}. Current speed readback will never update.");
 
-        if (FitnessMachineStatus != null)
-        {
-            _statusHandler = (s, args) =>
-            {
-                if (_disposed) return;
-                FitnessMachineStatusReceived?.Invoke(this, ReadBuffer(args.CharacteristicValue));
-            };
-            FitnessMachineStatus.ValueChanged += _statusHandler;
-            var cccdStatus = await FitnessMachineStatus.WriteClientCharacteristicConfigurationDescriptorAsync(
-                GattClientCharacteristicConfigurationDescriptorValue.Notify);
-            if (cccdStatus != GattCommunicationStatus.Success)
-                LastConnectWarnings.Add($"Fitness Machine Status notify subscription failed: {cccdStatus}.");
-        }
+        await SubscribeAsync(FitnessMachineStatus, GattClientCharacteristicConfigurationDescriptorValue.Notify,
+            h => _statusHandler = h,
+            bytes => FitnessMachineStatusReceived?.Invoke(this, bytes),
+            notFoundWarning: null,
+            subscribeFailWarningFormat: "Fitness Machine Status notify subscription failed: {0}.");
 
         return true;
     }
@@ -182,6 +150,34 @@ public class FtmsDevice : IDisposable
         return result.Status == GattCommunicationStatus.Success && result.Characteristics.Count > 0
             ? result.Characteristics[0]
             : null;
+    }
+
+    private async Task SubscribeAsync(
+        GattCharacteristic? characteristic,
+        GattClientCharacteristicConfigurationDescriptorValue cccdMode,
+        Action<TypedEventHandler<GattCharacteristic, GattValueChangedEventArgs>> storeHandler,
+        Action<byte[]> raiseEvent,
+        string? notFoundWarning,
+        string subscribeFailWarningFormat)
+    {
+        if (characteristic == null)
+        {
+            if (notFoundWarning != null)
+                LastConnectWarnings.Add(notFoundWarning);
+            return;
+        }
+
+        TypedEventHandler<GattCharacteristic, GattValueChangedEventArgs> handler = (_, args) =>
+        {
+            if (_disposed) return;
+            raiseEvent(ReadBuffer(args.CharacteristicValue));
+        };
+        storeHandler(handler);
+        characteristic.ValueChanged += handler;
+
+        var cccdStatus = await characteristic.WriteClientCharacteristicConfigurationDescriptorAsync(cccdMode);
+        if (cccdStatus != GattCommunicationStatus.Success)
+            LastConnectWarnings.Add(string.Format(subscribeFailWarningFormat, cccdStatus));
     }
 
     // BLE indications should normally arrive within a few hundred ms; this
