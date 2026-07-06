@@ -1,5 +1,7 @@
 using System.Windows;
+using BCUKCompanion.Core.Actions;
 using BCUKCompanion.ExpiredMinotaur.Wiz;
+using BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 using BCUKCompanion.ExpiredMinotaur.Wiz.UI;
 using BCUKCompanion.TrayApp;
 
@@ -12,16 +14,30 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
-        var store = new WizConfigStore(DataFolderName);
+        var registry = new EventActionTypeRegistry();
+        registry.Register<WizTurnOnAction>(WizTurnOnAction.ActionKind);
+        registry.Register<WizTurnOffAction>(WizTurnOffAction.ActionKind);
+        registry.Register<WizToggleAction>(WizToggleAction.ActionKind);
+        registry.Register<WizSetBrightnessAction>(WizSetBrightnessAction.ActionKind);
+        registry.Register<WizSetColorAction>(WizSetColorAction.ActionKind);
+        registry.Register<WizSetColorTemperatureAction>(WizSetColorTemperatureAction.ActionKind);
+
+        var store = new WizConfigStore(DataFolderName, registry);
         var client = new WizClient();
-        var dispatcher = new EventActionDispatcher(store.Load, client);
 
         WizSettingsWindow? settingsWindow = null;
 
         CompanionTrayApplication.Run(new CompanionTrayAppOptions
         {
             DataFolderName = DataFolderName,
-            OnBotEvent = e => Task.Run(() => dispatcher.DispatchAsync(e)),
+            OnBotEvent = e => Task.Run(() =>
+            {
+                var config = store.Load();
+                var dispatcher = new EventActionDispatcher(
+                    () => config.Mappings,
+                    () => new WizActionContext(client, config.Devices));
+                return dispatcher.DispatchAsync(e);
+            }),
             AdditionalMenuItems = new[]
             {
                 new TrayMenuItem("Wiz Devices...", () =>

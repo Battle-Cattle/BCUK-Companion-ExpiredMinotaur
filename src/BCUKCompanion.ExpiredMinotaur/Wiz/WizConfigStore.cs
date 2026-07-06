@@ -1,16 +1,22 @@
 using System.IO;
 using System.Text.Json;
+using BCUKCompanion.Core.Actions;
 
 namespace BCUKCompanion.ExpiredMinotaur.Wiz;
 
 public sealed class WizConfigStore
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
+    private readonly JsonSerializerOptions serializerOptions;
 
-    public WizConfigStore(string dataFolderName)
+    public WizConfigStore(string dataFolderName, EventActionTypeRegistry registry)
     {
         ConfigFilePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), dataFolderName, "wiz-config.json");
+        serializerOptions = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            Converters = { new EventActionJsonConverter(registry) },
+        };
     }
 
     public string ConfigFilePath { get; }
@@ -25,7 +31,7 @@ public sealed class WizConfigStore
         try
         {
             var json = File.ReadAllText(ConfigFilePath);
-            return JsonSerializer.Deserialize<WizConfig>(json) ?? new WizConfig();
+            return JsonSerializer.Deserialize<WizConfig>(json, serializerOptions) ?? new WizConfig();
         }
         catch (JsonException)
         {
@@ -40,7 +46,7 @@ public sealed class WizConfigStore
         Directory.CreateDirectory(directory);
 
         var tempPath = ConfigFilePath + ".tmp";
-        File.WriteAllText(tempPath, JsonSerializer.Serialize(config, SerializerOptions));
+        File.WriteAllText(tempPath, JsonSerializer.Serialize(config, serializerOptions));
         File.Move(tempPath, ConfigFilePath, overwrite: true);
     }
 
