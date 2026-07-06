@@ -35,7 +35,7 @@ public sealed class TreadmillSettingsWindow : EventActionMappingsWindow<Treadmil
         client.StatusChanged += OnStatusChanged;
 
         connectButton.Click += async (_, _) => await OnConnectAsync().ConfigureAwait(true);
-        disconnectButton.Click += (_, _) => OnDisconnect();
+        disconnectButton.Click += async (_, _) => await OnDisconnectAsync().ConfigureAwait(true);
 
         speedTimer.Tick += (_, _) => RefreshSpeedText();
         RefreshSpeedText();
@@ -134,11 +134,12 @@ public sealed class TreadmillSettingsWindow : EventActionMappingsWindow<Treadmil
         }
     }
 
-    private void OnDisconnect()
+    private async Task OnDisconnectAsync()
     {
+        disconnectButton.IsEnabled = false;
         try
         {
-            client.Disconnect();
+            await client.DisconnectAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {

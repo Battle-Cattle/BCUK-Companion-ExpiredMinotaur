@@ -20,8 +20,8 @@ public sealed class TreadmillClient : IDisposable
     private readonly SemaphoreSlim writeLock = new(1, 1);
     private readonly System.Threading.Timer keepAliveTimer;
 
-    // Not readonly: Disconnect() swaps in a fresh instance so a later Connect can scan/re-pair
-    // rather than reusing a torn-down device, matching the test app's Disconnect button.
+    // Not readonly: DisconnectAsync() swaps in a fresh instance so a later Connect can
+    // scan/re-pair rather than reusing a torn-down device, matching the test app's Disconnect button.
     private FtmsDevice device = new();
     private ControlPointService? controlPointService;
     private TaskCompletionSource<double>? firstSpeedReading;
@@ -153,13 +153,14 @@ public sealed class TreadmillClient : IDisposable
     /// later Connect can scan and re-read setup-dependent state instead of reusing a
     /// torn-down instance, exactly like the test app's Disconnect button.
     /// </summary>
-    public void Disconnect()
+    public async Task DisconnectAsync()
     {
         keepAliveTimer.Change(Timeout.Infinite, Timeout.Infinite);
 
-        // Block until any write already in flight (Nudge or keep-alive) releases the lock,
-        // so we never dispose the FtmsDevice a concurrent write is still using.
-        writeLock.Wait();
+        // Wait for any write already in flight (Nudge or keep-alive) to release the lock,
+        // so we never dispose the FtmsDevice a concurrent write is still using. Async so a
+        // WPF click handler awaiting this doesn't freeze the UI for the write's duration.
+        await writeLock.WaitAsync().ConfigureAwait(false);
         try
         {
             controlPointService = null;
@@ -253,7 +254,19 @@ public sealed class TreadmillClient : IDisposable
     public void Dispose()
     {
         keepAliveTimer.Dispose();
+
+        // Same race DisconnectAsync() guards against: without the lock, a concurrent
+        // NudgeSpeedAsync/SendKeepAliveAsync could Release() a SemaphoreSlim we've
+        // already disposed, throwing ObjectDisposedException out of their finally block.
+        writeLock.Wait();
+        try
+        {
+            device.Dispose();
+        }
+        finally
+        {
+            writeLock.Release();
+        }
         writeLock.Dispose();
-        device.Dispose();
     }
 }

@@ -69,6 +69,8 @@ internal static class Program
                     () => treadmillSettingsWindow, w => treadmillSettingsWindow = w),
             },
         });
+
+        treadmillClient.Dispose();
     }
 
     private static TrayMenuItem CreateSettingsMenuItem<TWindow>(
