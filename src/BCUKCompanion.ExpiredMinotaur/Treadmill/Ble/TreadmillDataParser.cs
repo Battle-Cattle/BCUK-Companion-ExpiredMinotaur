@@ -61,16 +61,7 @@ public static class TreadmillDataParser
             i += 1; // Average Pace — not tracked yet
 
         if (expendedEnergyPresent)
-        {
-            // Per FTMS spec, a device that can't calculate one of these sends the sentinel
-            // "data not available" value (0xFFFF / 0xFF) rather than omitting the field.
-            var totalEnergy = ReadUInt16(data, ref i);
-            var energyPerHour = ReadUInt16(data, ref i);
-            var energyPerMinute = data[i]; i += 1;
-            snapshot.TotalEnergyKcal = totalEnergy == 0xFFFF ? null : totalEnergy;
-            snapshot.EnergyPerHourKcal = energyPerHour == 0xFFFF ? null : energyPerHour;
-            snapshot.EnergyPerMinuteKcal = energyPerMinute == 0xFF ? null : energyPerMinute;
-        }
+            ParseExpendedEnergy(data, ref i, snapshot);
 
         if (heartRatePresent)
         {
@@ -89,6 +80,18 @@ public static class TreadmillDataParser
         // Force on Belt and Power Output (bit 12) intentionally not parsed yet.
 
         return snapshot;
+    }
+
+    // Per FTMS spec, a device that can't calculate one of these sends the sentinel
+    // "data not available" value (0xFFFF / 0xFF) rather than omitting the field.
+    private static void ParseExpendedEnergy(byte[] data, ref int i, TreadmillDataSnapshot snapshot)
+    {
+        var totalEnergy = ReadUInt16(data, ref i);
+        var energyPerHour = ReadUInt16(data, ref i);
+        var energyPerMinute = data[i]; i += 1;
+        snapshot.TotalEnergyKcal = totalEnergy == 0xFFFF ? null : totalEnergy;
+        snapshot.EnergyPerHourKcal = energyPerHour == 0xFFFF ? null : energyPerHour;
+        snapshot.EnergyPerMinuteKcal = energyPerMinute == 0xFF ? null : energyPerMinute;
     }
 
     private static ushort ReadUInt16(byte[] data, ref int i)
