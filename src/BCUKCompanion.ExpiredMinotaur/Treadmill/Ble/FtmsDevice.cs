@@ -101,6 +101,11 @@ public class FtmsDevice : IDisposable
     {
         LastConnectWarnings.Clear();
 
+        // A prior failed attempt (scan/connect ok but service lookup failed, say) may have
+        // left _device/_fitnessService and subscriptions set — release them before reusing
+        // this instance for a new attempt instead of leaking the old handles.
+        ReleaseCurrentDevice();
+
         try
         {
             _device = await BluetoothLEDevice.FromBluetoothAddressAsync(bluetoothAddress);
@@ -252,16 +257,23 @@ public class FtmsDevice : IDisposable
     {
         if (SupportedSpeedRange == null) return null;
 
-        var result = await SupportedSpeedRange.ReadValueAsync();
-        if (result.Status != GattCommunicationStatus.Success) return null;
+        try
+        {
+            var result = await SupportedSpeedRange.ReadValueAsync();
+            if (result.Status != GattCommunicationStatus.Success) return null;
 
-        var bytes = ReadBuffer(result.Value);
-        if (bytes.Length < 6) return null;
+            var bytes = ReadBuffer(result.Value);
+            if (bytes.Length < 6) return null;
 
-        ushort min = (ushort)(bytes[0] | (bytes[1] << 8));
-        ushort max = (ushort)(bytes[2] | (bytes[3] << 8));
-        ushort increment = (ushort)(bytes[4] | (bytes[5] << 8));
-        return (min / 100.0, max / 100.0, increment / 100.0);
+            ushort min = (ushort)(bytes[0] | (bytes[1] << 8));
+            ushort max = (ushort)(bytes[2] | (bytes[3] << 8));
+            ushort increment = (ushort)(bytes[4] | (bytes[5] << 8));
+            return (min / 100.0, max / 100.0, increment / 100.0);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     private static byte[] ReadBuffer(IBuffer buffer)
@@ -272,10 +284,8 @@ public class FtmsDevice : IDisposable
         return bytes;
     }
 
-    public void Dispose()
+    private void ReleaseCurrentDevice()
     {
-        _disposed = true;
-
         if (ControlPoint != null && _controlPointHandler != null)
             ControlPoint.ValueChanged -= _controlPointHandler;
         if (TreadmillData != null && _treadmillDataHandler != null)
@@ -283,12 +293,21 @@ public class FtmsDevice : IDisposable
         if (FitnessMachineStatus != null && _statusHandler != null)
             FitnessMachineStatus.ValueChanged -= _statusHandler;
 
+        _device?.Dispose();
+        _device = null;
+        _fitnessService = null;
+        ControlPoint = TreadmillData = FitnessMachineStatus = SupportedSpeedRange = null;
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        ReleaseCurrentDevice();
+
         // Drop external subscribers too, so a stray in-flight callback
         // that slips through can't reach a disposed ViewModel.
         TreadmillDataReceived = null;
         ControlPointIndicationReceived = null;
         FitnessMachineStatusReceived = null;
-
-        _device?.Dispose();
     }
 }
