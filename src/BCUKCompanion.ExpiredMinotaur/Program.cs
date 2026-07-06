@@ -26,7 +26,6 @@ internal static class Program
         registry.Register<WizSetColorAction>(WizSetColorAction.ActionKind);
         registry.Register<WizSetColorTemperatureAction>(WizSetColorTemperatureAction.ActionKind);
         registry.Register<TreadmillNudgeSpeedAction>(TreadmillNudgeSpeedAction.ActionKind);
-        registry.Register<DelayAction>(DelayAction.ActionKind);
 
         var store = new WizConfigStore(DataFolderName, registry);
         var client = new WizClient();
