@@ -101,46 +101,54 @@ public class FtmsDevice : IDisposable
     {
         LastConnectWarnings.Clear();
 
-        _device = await BluetoothLEDevice.FromBluetoothAddressAsync(bluetoothAddress);
-        if (_device == null)
+        try
         {
-            LastConnectWarnings.Add("FromBluetoothAddressAsync returned null.");
+            _device = await BluetoothLEDevice.FromBluetoothAddressAsync(bluetoothAddress);
+            if (_device == null)
+            {
+                LastConnectWarnings.Add("FromBluetoothAddressAsync returned null.");
+                return false;
+            }
+
+            var servicesResult = await _device.GetGattServicesForUuidAsync(FtmsConstants.FitnessMachineService);
+            if (servicesResult.Status != GattCommunicationStatus.Success || servicesResult.Services.Count == 0)
+            {
+                LastConnectWarnings.Add($"Fitness Machine service (0x1826) not found (status: {servicesResult.Status}).");
+                return false;
+            }
+
+            _fitnessService = servicesResult.Services[0];
+
+            ControlPoint = await GetCharacteristicAsync(FtmsConstants.FitnessMachineControlPoint);
+            TreadmillData = await GetCharacteristicAsync(FtmsConstants.TreadmillData);
+            FitnessMachineStatus = await GetCharacteristicAsync(FtmsConstants.FitnessMachineStatus);
+            SupportedSpeedRange = await GetCharacteristicAsync(FtmsConstants.SupportedSpeedRange);
+
+            await SubscribeAsync(ControlPoint, GattClientCharacteristicConfigurationDescriptorValue.Indicate,
+                h => _controlPointHandler = h,
+                bytes => ControlPointIndicationReceived?.Invoke(this, bytes),
+                notFoundWarning: "Control Point (0x2AD9) characteristic not found — speed/start/stop writes are impossible.",
+                subscribeFailWarningFormat: "Control Point indicate subscription failed: {0}. Control responses will never arrive.");
+
+            await SubscribeAsync(TreadmillData, GattClientCharacteristicConfigurationDescriptorValue.Notify,
+                h => _treadmillDataHandler = h,
+                bytes => TreadmillDataReceived?.Invoke(this, bytes),
+                notFoundWarning: "Treadmill Data (0x2ACD) characteristic not found — current speed readback disabled.",
+                subscribeFailWarningFormat: "Treadmill Data notify subscription failed: {0}. Current speed readback will never update.");
+
+            await SubscribeAsync(FitnessMachineStatus, GattClientCharacteristicConfigurationDescriptorValue.Notify,
+                h => _statusHandler = h,
+                bytes => FitnessMachineStatusReceived?.Invoke(this, bytes),
+                notFoundWarning: null,
+                subscribeFailWarningFormat: "Fitness Machine Status notify subscription failed: {0}.");
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LastConnectWarnings.Add($"Connect failed: {ex.Message}");
             return false;
         }
-
-        var servicesResult = await _device.GetGattServicesForUuidAsync(FtmsConstants.FitnessMachineService);
-        if (servicesResult.Status != GattCommunicationStatus.Success || servicesResult.Services.Count == 0)
-        {
-            LastConnectWarnings.Add($"Fitness Machine service (0x1826) not found (status: {servicesResult.Status}).");
-            return false;
-        }
-
-        _fitnessService = servicesResult.Services[0];
-
-        ControlPoint = await GetCharacteristicAsync(FtmsConstants.FitnessMachineControlPoint);
-        TreadmillData = await GetCharacteristicAsync(FtmsConstants.TreadmillData);
-        FitnessMachineStatus = await GetCharacteristicAsync(FtmsConstants.FitnessMachineStatus);
-        SupportedSpeedRange = await GetCharacteristicAsync(FtmsConstants.SupportedSpeedRange);
-
-        await SubscribeAsync(ControlPoint, GattClientCharacteristicConfigurationDescriptorValue.Indicate,
-            h => _controlPointHandler = h,
-            bytes => ControlPointIndicationReceived?.Invoke(this, bytes),
-            notFoundWarning: "Control Point (0x2AD9) characteristic not found — speed/start/stop writes are impossible.",
-            subscribeFailWarningFormat: "Control Point indicate subscription failed: {0}. Control responses will never arrive.");
-
-        await SubscribeAsync(TreadmillData, GattClientCharacteristicConfigurationDescriptorValue.Notify,
-            h => _treadmillDataHandler = h,
-            bytes => TreadmillDataReceived?.Invoke(this, bytes),
-            notFoundWarning: "Treadmill Data (0x2ACD) characteristic not found — current speed readback disabled.",
-            subscribeFailWarningFormat: "Treadmill Data notify subscription failed: {0}. Current speed readback will never update.");
-
-        await SubscribeAsync(FitnessMachineStatus, GattClientCharacteristicConfigurationDescriptorValue.Notify,
-            h => _statusHandler = h,
-            bytes => FitnessMachineStatusReceived?.Invoke(this, bytes),
-            notFoundWarning: null,
-            subscribeFailWarningFormat: "Fitness Machine Status notify subscription failed: {0}.");
-
-        return true;
     }
 
     private async Task<GattCharacteristic?> GetCharacteristicAsync(Guid characteristicUuid)
@@ -219,6 +227,10 @@ public class FtmsDevice : IDisposable
                 return new ControlPointWriteResult(opcode, writeSucceeded: true, indicationReceived: true, resultCode: resp[2]);
             }
             return new ControlPointWriteResult(opcode, writeSucceeded: true, indicationReceived: false, resultCode: null);
+        }
+        catch (Exception)
+        {
+            return new ControlPointWriteResult(opcode, writeSucceeded: false, indicationReceived: false, resultCode: null);
         }
         finally
         {

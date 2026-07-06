@@ -156,13 +156,24 @@ public sealed class TreadmillClient : IDisposable
     public void Disconnect()
     {
         keepAliveTimer.Change(Timeout.Infinite, Timeout.Infinite);
-        controlPointService = null;
-        IsConnected = false;
-        CurrentSpeedKmh = 0;
 
-        device.Dispose();
-        device = new FtmsDevice();
-        AttachDeviceEvents(device);
+        // Block until any write already in flight (Nudge or keep-alive) releases the lock,
+        // so we never dispose the FtmsDevice a concurrent write is still using.
+        writeLock.Wait();
+        try
+        {
+            controlPointService = null;
+            IsConnected = false;
+            CurrentSpeedKmh = 0;
+
+            device.Dispose();
+            device = new FtmsDevice();
+            AttachDeviceEvents(device);
+        }
+        finally
+        {
+            writeLock.Release();
+        }
 
         RaiseStatus("Disconnected.");
     }
@@ -195,6 +206,11 @@ public sealed class TreadmillClient : IDisposable
                 RaiseStatus($"Nudge failed: {result}");
             }
             return result.Accepted;
+        }
+        catch (Exception ex)
+        {
+            RaiseStatus($"Nudge write failed: {ex.Message}");
+            return false;
         }
         finally
         {

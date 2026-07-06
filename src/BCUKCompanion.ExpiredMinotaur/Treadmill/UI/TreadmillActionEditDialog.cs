@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using BCUKCompanion.Core.Actions;
@@ -102,7 +103,7 @@ public sealed class TreadmillActionEditDialog : Window
             switch (existing)
             {
                 case TreadmillNudgeSpeedAction nudge:
-                    deltaBox.Text = nudge.DeltaKmh.ToString("0.0");
+                    deltaBox.Text = nudge.DeltaKmh.ToString("0.0", CultureInfo.InvariantCulture);
                     break;
                 case DelayAction delay:
                     delayBox.Text = delay.DelaySeconds.ToString();
@@ -155,7 +156,7 @@ public sealed class TreadmillActionEditDialog : Window
 
     private (IEventAction?, string?) BuildNudgeSpeedAction()
     {
-        if (!double.TryParse(deltaBox.Text.Trim(), out var delta))
+        if (!double.TryParse(deltaBox.Text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var delta))
             return (null, "Enter a numeric speed delta.");
         var action = new TreadmillNudgeSpeedAction { DeltaKmh = delta };
         var errors = action.Validate(context);

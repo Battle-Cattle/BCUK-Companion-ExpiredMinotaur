@@ -32,7 +32,7 @@ public sealed class TreadmillSettingsWindow : EventActionMappingsWindow<Treadmil
 
         // StatusChanged fires on whatever thread triggered it (a BLE callback thread, or the
         // keep-alive timer's thread-pool thread) — marshal onto the UI thread ourselves.
-        client.StatusChanged += (_, message) => Dispatcher.Invoke(() => connectionStatusText.Text = message);
+        client.StatusChanged += OnStatusChanged;
 
         connectButton.Click += async (_, _) => await OnConnectAsync().ConfigureAwait(true);
         disconnectButton.Click += (_, _) => OnDisconnect();
@@ -80,8 +80,14 @@ public sealed class TreadmillSettingsWindow : EventActionMappingsWindow<Treadmil
 
         RefreshRewardTitleSuggestions();
 
-        Closed += (_, _) => speedTimer.Stop();
+        Closed += (_, _) =>
+        {
+            speedTimer.Stop();
+            client.StatusChanged -= OnStatusChanged;
+        };
     }
+
+    private void OnStatusChanged(object? sender, string message) => Dispatcher.Invoke(() => connectionStatusText.Text = message);
 
     protected override TreadmillConfig BuildConfig() => new() { Mappings = Mappings.ToList() };
 
@@ -114,13 +120,33 @@ public sealed class TreadmillSettingsWindow : EventActionMappingsWindow<Treadmil
     private async Task OnConnectAsync()
     {
         connectButton.IsEnabled = false;
-        await client.ConnectAsync().ConfigureAwait(true);
-        RefreshConnectionButtons();
+        try
+        {
+            await client.ConnectAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            connectionStatusText.Text = $"Connect failed: {ex.Message}";
+        }
+        finally
+        {
+            RefreshConnectionButtons();
+        }
     }
 
     private void OnDisconnect()
     {
-        client.Disconnect();
-        RefreshConnectionButtons();
+        try
+        {
+            client.Disconnect();
+        }
+        catch (Exception ex)
+        {
+            connectionStatusText.Text = $"Disconnect failed: {ex.Message}";
+        }
+        finally
+        {
+            RefreshConnectionButtons();
+        }
     }
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using BCUKCompanion.Core.Actions;
@@ -12,6 +13,11 @@ namespace BCUKCompanion.ExpiredMinotaur;
 public abstract class EventActionConfigStore<TConfig> where TConfig : new()
 {
     private readonly JsonSerializerOptions serializerOptions;
+
+    // Load() (background dispatch thread) and Save() (UI thread) can be called concurrently;
+    // this keeps the read and the temp-file-write-then-move fully serialized within this
+    // process so neither observes the other's half-finished file state.
+    private readonly object syncRoot = new();
 
     protected EventActionConfigStore(string dataFolderName, string configFileName, EventActionTypeRegistry registry)
     {
@@ -28,31 +34,37 @@ public abstract class EventActionConfigStore<TConfig> where TConfig : new()
 
     public TConfig Load()
     {
-        if (!File.Exists(ConfigFilePath))
+        lock (syncRoot)
         {
-            return new TConfig();
-        }
+            if (!File.Exists(ConfigFilePath))
+            {
+                return new TConfig();
+            }
 
-        try
-        {
-            var json = File.ReadAllText(ConfigFilePath);
-            return JsonSerializer.Deserialize<TConfig>(json, serializerOptions) ?? new TConfig();
-        }
-        catch (JsonException)
-        {
-            TryBackUpCorruptConfig();
-            return new TConfig();
+            try
+            {
+                var json = File.ReadAllText(ConfigFilePath);
+                return JsonSerializer.Deserialize<TConfig>(json, serializerOptions) ?? new TConfig();
+            }
+            catch (JsonException)
+            {
+                TryBackUpCorruptConfig();
+                return new TConfig();
+            }
         }
     }
 
     public void Save(TConfig config)
     {
-        var directory = Path.GetDirectoryName(ConfigFilePath)!;
-        Directory.CreateDirectory(directory);
+        lock (syncRoot)
+        {
+            var directory = Path.GetDirectoryName(ConfigFilePath)!;
+            Directory.CreateDirectory(directory);
 
-        var tempPath = ConfigFilePath + ".tmp";
-        File.WriteAllText(tempPath, JsonSerializer.Serialize(config, serializerOptions));
-        File.Move(tempPath, ConfigFilePath, overwrite: true);
+            var tempPath = ConfigFilePath + ".tmp";
+            File.WriteAllText(tempPath, JsonSerializer.Serialize(config, serializerOptions));
+            File.Move(tempPath, ConfigFilePath, overwrite: true);
+        }
     }
 
     private void TryBackUpCorruptConfig()
@@ -61,8 +73,9 @@ public abstract class EventActionConfigStore<TConfig> where TConfig : new()
         {
             File.Copy(ConfigFilePath, ConfigFilePath + ".bak", overwrite: true);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Debug.WriteLine($"Failed to back up corrupt config '{ConfigFilePath}': {ex}");
         }
     }
 }

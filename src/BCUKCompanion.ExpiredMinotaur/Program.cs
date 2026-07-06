@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using BCUKCompanion.Core.Actions;
 using BCUKCompanion.ExpiredMinotaur.Treadmill;
@@ -25,6 +26,7 @@ internal static class Program
         registry.Register<WizSetColorAction>(WizSetColorAction.ActionKind);
         registry.Register<WizSetColorTemperatureAction>(WizSetColorTemperatureAction.ActionKind);
         registry.Register<TreadmillNudgeSpeedAction>(TreadmillNudgeSpeedAction.ActionKind);
+        registry.Register<DelayAction>(DelayAction.ActionKind);
 
         var store = new WizConfigStore(DataFolderName, registry);
         var client = new WizClient();
@@ -50,8 +52,12 @@ internal static class Program
                         () => config.Mappings,
                         () => new WizActionContext(client, config.Devices));
                     return dispatcher.DispatchAsync(e);
-                });
-                Task.Run(() => treadmillDispatcher.DispatchAsync(e));
+                }).ContinueWith(
+                    t => Debug.WriteLine($"Wiz dispatch failed: {t.Exception}"),
+                    TaskContinuationOptions.OnlyOnFaulted);
+                Task.Run(() => treadmillDispatcher.DispatchAsync(e)).ContinueWith(
+                    t => Debug.WriteLine($"Treadmill dispatch failed: {t.Exception}"),
+                    TaskContinuationOptions.OnlyOnFaulted);
             },
             AdditionalMenuItems = new[]
             {
