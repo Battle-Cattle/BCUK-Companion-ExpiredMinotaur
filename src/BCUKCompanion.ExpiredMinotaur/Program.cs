@@ -24,16 +24,20 @@ internal static class Program
 
         var store = new WizConfigStore(DataFolderName, registry);
         var client = new WizClient();
-        var dispatcher = new EventActionDispatcher(
-            () => store.Load().Mappings,
-            () => new WizActionContext(client, store.Load().Devices));
 
         WizSettingsWindow? settingsWindow = null;
 
         CompanionTrayApplication.Run(new CompanionTrayAppOptions
         {
             DataFolderName = DataFolderName,
-            OnBotEvent = e => Task.Run(() => dispatcher.DispatchAsync(e)),
+            OnBotEvent = e => Task.Run(() =>
+            {
+                var config = store.Load();
+                var dispatcher = new EventActionDispatcher(
+                    () => config.Mappings,
+                    () => new WizActionContext(client, config.Devices));
+                return dispatcher.DispatchAsync(e);
+            }),
             AdditionalMenuItems = new[]
             {
                 new TrayMenuItem("Wiz Devices...", () =>

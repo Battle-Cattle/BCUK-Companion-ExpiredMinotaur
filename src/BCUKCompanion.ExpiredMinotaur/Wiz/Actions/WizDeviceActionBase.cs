@@ -52,7 +52,11 @@ public abstract class WizDeviceActionBase : IEventAction
 
     protected abstract IReadOnlyList<string> ValidateDeviceSpecific(WizDevice device);
 
-    protected abstract object BuildPayload();
+    protected virtual object BuildPayload()
+        => throw new NotSupportedException($"{GetType().Name} must override {nameof(BuildPayload)} or {nameof(BuildPayloadAsync)}.");
+
+    protected virtual Task<object> BuildPayloadAsync(WizClient client, WizDevice device, CancellationToken cancellationToken)
+        => Task.FromResult(BuildPayload());
 
     protected static List<string> ValidateCapabilityAndRange(CapabilityRangeCheck check)
     {
@@ -63,7 +67,10 @@ public abstract class WizDeviceActionBase : IEventAction
     }
 
     protected virtual async Task<bool> SendAsync(WizClient client, WizDevice device, CancellationToken cancellationToken)
-        => await client.SetPilotAsync(device.IpAddress, BuildPayload(), cancellationToken: cancellationToken).ConfigureAwait(false);
+    {
+        var payload = await BuildPayloadAsync(client, device, cancellationToken).ConfigureAwait(false);
+        return await client.SetPilotAsync(device.IpAddress, payload, cancellationToken: cancellationToken).ConfigureAwait(false);
+    }
 
     protected readonly record struct CapabilityRangeCheck(
         bool Supported, string UnsupportedMessage, int Value, int Min, int Max, string OutOfRangeMessage);

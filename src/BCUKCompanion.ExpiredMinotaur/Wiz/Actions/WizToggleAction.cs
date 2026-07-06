@@ -15,17 +15,14 @@ public sealed class WizToggleAction : WizDeviceActionBase
 
     protected override IReadOnlyList<string> ValidateDeviceSpecific(WizDevice device) => [];
 
-    protected override object BuildPayload() => throw new NotSupportedException("Toggle overrides SendAsync instead.");
-
-    protected override async Task<bool> SendAsync(WizClient client, WizDevice device, CancellationToken cancellationToken)
+    protected override async Task<object> BuildPayloadAsync(WizClient client, WizDevice device, CancellationToken cancellationToken)
     {
         var status = await client.GetPilotAsync(device.IpAddress, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (status is null)
         {
-            return false;
+            throw new InvalidOperationException("Device did not respond to status query.");
         }
 
-        return await client.SetPilotAsync(device.IpAddress, new { state = !status.State }, cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
+        return new { state = !status.State };
     }
 }
