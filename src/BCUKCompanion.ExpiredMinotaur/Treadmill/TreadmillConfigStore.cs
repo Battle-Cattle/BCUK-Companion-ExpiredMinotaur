@@ -2,7 +2,7 @@ using BCUKCompanion.Core.Actions;
 
 namespace BCUKCompanion.ExpiredMinotaur.Treadmill;
 
-public sealed record TreadmillConfig
+public sealed record TreadmillConfig : IEventActionMappingsConfig
 {
     public List<EventActionMapping> Mappings { get; init; } = [];
 }
