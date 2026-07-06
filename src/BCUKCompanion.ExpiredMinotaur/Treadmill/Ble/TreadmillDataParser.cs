@@ -62,9 +62,14 @@ public static class TreadmillDataParser
 
         if (expendedEnergyPresent)
         {
-            snapshot.TotalEnergyKcal = ReadUInt16(data, ref i);
-            snapshot.EnergyPerHourKcal = ReadUInt16(data, ref i);
-            snapshot.EnergyPerMinuteKcal = data[i]; i += 1;
+            // Per FTMS spec, a device that can't calculate one of these sends the sentinel
+            // "data not available" value (0xFFFF / 0xFF) rather than omitting the field.
+            var totalEnergy = ReadUInt16(data, ref i);
+            var energyPerHour = ReadUInt16(data, ref i);
+            var energyPerMinute = data[i]; i += 1;
+            snapshot.TotalEnergyKcal = totalEnergy == 0xFFFF ? null : totalEnergy;
+            snapshot.EnergyPerHourKcal = energyPerHour == 0xFFFF ? null : energyPerHour;
+            snapshot.EnergyPerMinuteKcal = energyPerMinute == 0xFF ? null : energyPerMinute;
         }
 
         if (heartRatePresent)

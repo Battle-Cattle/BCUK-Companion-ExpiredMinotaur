@@ -196,6 +196,14 @@ public sealed class TreadmillClient : IDisposable
         await writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            // Re-check: DisconnectAsync only nulls controlPointService once it holds this
+            // same lock, so a disconnect completing between the check above and acquiring
+            // the lock here would otherwise leave us dereferencing a null reference.
+            if (!IsConnected || controlPointService is null)
+            {
+                return false;
+            }
+
             var snapped = SnapAndClamp(TargetSpeedKmh + deltaKmh);
             var result = await controlPointService.SetTargetSpeedAsync(snapped).ConfigureAwait(false);
             if (result.Accepted)
@@ -237,6 +245,11 @@ public sealed class TreadmillClient : IDisposable
         await writeLock.WaitAsync().ConfigureAwait(false);
         try
         {
+            if (!IsConnected || controlPointService is null)
+            {
+                return;
+            }
+
             await controlPointService.SetTargetSpeedAsync(TargetSpeedKmh).ConfigureAwait(false);
         }
         catch (Exception ex)
