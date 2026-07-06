@@ -20,7 +20,7 @@ public sealed record WizDevice(
     public override string ToString() => $"{Name} ({IpAddress}) - {DeviceType}";
 }
 
-public sealed record WizConfig
+public sealed record WizConfig : IEventActionMappingsConfig
 {
     public List<WizDevice> Devices { get; init; } = [];
     public List<EventActionMapping> Mappings { get; init; } = [];
