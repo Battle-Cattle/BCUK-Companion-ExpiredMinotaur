@@ -46,7 +46,7 @@ public abstract class EventActionConfigStore<TConfig> where TConfig : new()
                 var json = File.ReadAllText(ConfigFilePath);
                 return JsonSerializer.Deserialize<TConfig>(json, serializerOptions) ?? new TConfig();
             }
-            catch (JsonException)
+            catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
             {
                 TryBackUpCorruptConfig();
                 return new TConfig();
