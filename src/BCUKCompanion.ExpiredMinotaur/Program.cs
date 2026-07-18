@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Windows;
+using BCUKCompanion.Core;
 using BCUKCompanion.Core.Actions;
 using BCUKCompanion.ExpiredMinotaur.Treadmill;
 using BCUKCompanion.ExpiredMinotaur.Treadmill.Actions;
@@ -39,9 +40,15 @@ internal static class Program
         WizSettingsWindow? settingsWindow = null;
         TreadmillSettingsWindow? treadmillSettingsWindow = null;
 
+        // Set via OnClientReady once the tray shell creates (or recreates, on a bot-host
+        // change) its CompanionClient. Settings windows read this through a Func so they
+        // always see the current instance, even one created after the window itself.
+        CompanionClient? companionClient = null;
+
         CompanionTrayApplication.Run(new CompanionTrayAppOptions
         {
             DataFolderName = DataFolderName,
+            OnClientReady = client => companionClient = client,
             OnBotEvent = e =>
             {
                 Task.Run(() =>
@@ -61,10 +68,10 @@ internal static class Program
             AdditionalMenuItems = new[]
             {
                 CreateSettingsMenuItem("Wiz Devices...",
-                    () => new WizSettingsWindow(store, client),
+                    () => new WizSettingsWindow(store, client, () => companionClient),
                     () => settingsWindow, w => settingsWindow = w),
                 CreateSettingsMenuItem("Treadmill...",
-                    () => new TreadmillSettingsWindow(treadmillStore, treadmillClient),
+                    () => new TreadmillSettingsWindow(treadmillStore, treadmillClient, () => companionClient),
                     () => treadmillSettingsWindow, w => treadmillSettingsWindow = w),
             },
         });

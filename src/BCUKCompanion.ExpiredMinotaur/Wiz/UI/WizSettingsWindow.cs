@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
+using BCUKCompanion.Core;
 using BCUKCompanion.Core.Actions;
 using BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 using Button = System.Windows.Controls.Button;
@@ -18,8 +19,8 @@ public sealed class WizSettingsWindow : EventActionMappingsWindow<WizConfig>
 
     private readonly ListBox devicesList = new() { Margin = new Thickness(0, 0, 0, 8), MinHeight = 200 };
 
-    public WizSettingsWindow(WizConfigStore configStore, WizClient client)
-        : base(configStore, configStore.Load())
+    public WizSettingsWindow(WizConfigStore configStore, WizClient client, Func<CompanionClient?>? getCompanionClient = null)
+        : base(configStore, configStore.Load(), getCompanionClient)
     {
         this.client = client;
         devices = new ObservableCollection<WizDevice>(InitialConfig.Devices);

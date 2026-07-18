@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
+using BCUKCompanion.Core;
 using BCUKCompanion.Core.Actions;
 using BCUKCompanion.Core.Models;
 using Button = System.Windows.Controls.Button;
@@ -36,6 +37,16 @@ public abstract class EventActionMappingsWindow<TConfig> : Window where TConfig 
     private readonly EventActionConfigStore<TConfig> configStore;
     private readonly EventActionDispatcher dispatcher;
 
+    /// <summary>
+    /// Optional accessor for the shared <see cref="CompanionClient"/>, used to refresh the
+    /// reward title suggestions from the live Twitch reward list (GET /api/companion/rewards)
+    /// instead of only offering titles already used in saved mappings. A <c>Func</c> rather
+    /// than a captured instance because the tray app shell can swap out its
+    /// <see cref="CompanionClient"/> (e.g. on a bot-host change) after this window is created.
+    /// Null (the default) preserves the old local-only suggestion behavior.
+    /// </summary>
+    private readonly Func<CompanionClient?>? getCompanionClient;
+
     protected readonly ObservableCollection<EventActionMapping> Mappings;
 
     protected readonly ListBox MappingsList = new() { Margin = new Thickness(0, 0, 0, 8), MinHeight = 200 };
@@ -52,9 +63,13 @@ public abstract class EventActionMappingsWindow<TConfig> : Window where TConfig 
         public override string ToString() => display;
     }
 
-    protected EventActionMappingsWindow(EventActionConfigStore<TConfig> configStore, TConfig config)
+    protected EventActionMappingsWindow(
+        EventActionConfigStore<TConfig> configStore,
+        TConfig config,
+        Func<CompanionClient?>? getCompanionClient = null)
     {
         this.configStore = configStore;
+        this.getCompanionClient = getCompanionClient;
         InitialConfig = config;
         Mappings = new ObservableCollection<EventActionMapping>(config.Mappings);
         dispatcher = new EventActionDispatcher(() => BuildConfig().Mappings, BuildContext);
@@ -141,6 +156,39 @@ public abstract class EventActionMappingsWindow<TConfig> : Window where TConfig 
     protected void RefreshRewardTitleSuggestions()
     {
         RewardTitleCombo.ItemsSource = Mappings.Select(m => m.RewardTitle).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        // Best-effort enhancement: if we have a logged-in companion client, replace the
+        // local-only suggestion list above with the live reward catalog once it arrives.
+        if (getCompanionClient?.Invoke() is { IsLoggedIn: true } client)
+        {
+            _ = RefreshRewardTitleSuggestionsFromServerAsync(client);
+        }
+    }
+
+    private async Task RefreshRewardTitleSuggestionsFromServerAsync(CompanionClient client)
+    {
+        IReadOnlyList<Reward> rewards;
+        try
+        {
+            rewards = await client.GetRewardsAsync().ConfigureAwait(true);
+        }
+        catch (Exception)
+        {
+            // Server unreachable, token expired, etc. — the local-only suggestions set in
+            // RefreshRewardTitleSuggestions() above stand; there's no dedicated retry here
+            // since the user can always type a title that isn't in the list.
+            return;
+        }
+
+        var titles = rewards
+            .Where(r => r.IsEnabled)
+            .Select(r => r.Title)
+            .Concat(Mappings.Select(m => m.RewardTitle))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        RewardTitleCombo.ItemsSource = titles;
     }
 
     protected void RefreshActionsList()
