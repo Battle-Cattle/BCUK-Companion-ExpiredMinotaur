@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using BCUKCompanion.Core;
 using BCUKCompanion.Core.Actions;
 using Button = System.Windows.Controls.Button;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
@@ -20,8 +21,8 @@ public sealed class TreadmillSettingsWindow : EventActionMappingsWindow<Treadmil
 
     private readonly DispatcherTimer speedTimer = new() { Interval = TimeSpan.FromSeconds(1) };
 
-    public TreadmillSettingsWindow(TreadmillConfigStore configStore, TreadmillClient client)
-        : base(configStore, configStore.Load())
+    public TreadmillSettingsWindow(TreadmillConfigStore configStore, TreadmillClient client, Func<CompanionClient?>? getCompanionClient = null)
+        : base(configStore, configStore.Load(), getCompanionClient)
     {
         this.client = client;
 
