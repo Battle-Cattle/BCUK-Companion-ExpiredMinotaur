@@ -23,6 +23,11 @@ public sealed class WizToggleAction : WizDeviceActionBase
             throw new InvalidOperationException("Device did not respond to status query.");
         }
 
-        return new { state = !status.State };
+        if (status.State is not bool currentState)
+        {
+            throw new InvalidOperationException("Device did not report its current on/off state; cannot toggle.");
+        }
+
+        return new { state = !currentState };
     }
 }

@@ -9,7 +9,9 @@ namespace BCUKCompanion.ExpiredMinotaur.Wiz;
 
 public sealed record WizDiscoveredDevice(string IpAddress, string ModuleName);
 
-public sealed record WizPilotStatus(bool State, int? Dimming, byte? R, byte? G, byte? B, int? Temp);
+// State is null when the device's getPilot response omits the "state" field (seen on some
+// plug firmware) — callers must treat that as "unknown," not silently assume off.
+public sealed record WizPilotStatus(bool? State, int? Dimming, byte? R, byte? G, byte? B, int? Temp);
 
 public sealed class WizClient
 {
@@ -71,7 +73,7 @@ public sealed class WizClient
                 return null;
             }
 
-            var state = result.TryGetProperty("state", out var stateEl) && stateEl.GetBoolean();
+            bool? state = result.TryGetProperty("state", out var stateEl) ? stateEl.GetBoolean() : null;
             int? dimming = result.TryGetProperty("dimming", out var dimmingEl) ? dimmingEl.GetInt32() : null;
             byte? r = result.TryGetProperty("r", out var rEl) ? rEl.GetByte() : null;
             byte? g = result.TryGetProperty("g", out var gEl) ? gEl.GetByte() : null;
