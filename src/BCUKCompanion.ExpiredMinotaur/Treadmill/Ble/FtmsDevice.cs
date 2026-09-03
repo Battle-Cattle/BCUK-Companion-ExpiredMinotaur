@@ -74,14 +74,17 @@ public class FtmsDevice : IDisposable
             ScanningMode = BluetoothLEScanningMode.Active
         };
 
-        watcher.Received += (sender, args) =>
+        TypedEventHandler<BluetoothLEAdvertisementWatcher, BluetoothLEAdvertisementReceivedEventArgs>? handler = null;
+        handler = (sender, args) =>
         {
             if (args.Advertisement.ServiceUuids.Contains(FtmsConstants.FitnessMachineService))
             {
                 watcher.Stop();
+                watcher.Received -= handler;
                 tcs.TrySetResult(args.BluetoothAddress);
             }
         };
+        watcher.Received += handler;
 
         watcher.Start();
 
@@ -90,6 +93,7 @@ public class FtmsDevice : IDisposable
             if (!tcs.Task.IsCompleted)
             {
                 watcher.Stop();
+                watcher.Received -= handler;
                 tcs.TrySetResult(null);
             }
         });
