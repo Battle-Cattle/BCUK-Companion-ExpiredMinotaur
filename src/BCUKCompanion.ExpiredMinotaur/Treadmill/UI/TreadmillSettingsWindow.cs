@@ -4,7 +4,6 @@ using System.Windows.Threading;
 using BCUKCompanion.Core;
 using BCUKCompanion.Core.Actions;
 using Button = System.Windows.Controls.Button;
-using HorizontalAlignment = System.Windows.HorizontalAlignment;
 using Orientation = System.Windows.Controls.Orientation;
 using TabControl = System.Windows.Controls.TabControl;
 
@@ -62,12 +61,9 @@ public sealed class TreadmillSettingsWindow : EventActionMappingsWindow<Treadmil
         };
         tabs.Items.Add(new TabItem { Header = "Event Mappings", Content = BuildMappingsTab() });
 
-        var saveButton = new Button { Content = "Save", Width = 90, HorizontalAlignment = HorizontalAlignment.Right };
-        saveButton.Click += (_, _) => OnSave();
-
         var bottomPanel = new DockPanel { Margin = new Thickness(12, 8, 12, 12) };
-        DockPanel.SetDock(saveButton, Dock.Right);
-        bottomPanel.Children.Add(saveButton);
+        DockPanel.SetDock(SaveButton, Dock.Right);
+        bottomPanel.Children.Add(SaveButton);
         bottomPanel.Children.Add(StatusText);
 
         var root = new DockPanel();

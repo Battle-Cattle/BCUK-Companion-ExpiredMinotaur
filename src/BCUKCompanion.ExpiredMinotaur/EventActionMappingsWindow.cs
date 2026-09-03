@@ -6,6 +6,7 @@ using BCUKCompanion.Core.Actions;
 using BCUKCompanion.Core.Models;
 using Button = System.Windows.Controls.Button;
 using ComboBox = System.Windows.Controls.ComboBox;
+using HorizontalAlignment = System.Windows.HorizontalAlignment;
 using ListBox = System.Windows.Controls.ListBox;
 using MessageBox = System.Windows.MessageBox;
 using Orientation = System.Windows.Controls.Orientation;
@@ -53,6 +54,7 @@ public abstract class EventActionMappingsWindow<TConfig> : Window where TConfig 
     protected readonly ListBox ActionsList = new() { Margin = new Thickness(0, 0, 0, 8), MinHeight = 160 };
     protected readonly ComboBox RewardTitleCombo = new() { IsEditable = true, Margin = new Thickness(0, 0, 0, 8) };
     protected readonly TextBlock StatusText = new() { Margin = new Thickness(12, 0, 12, 12) };
+    protected readonly Button SaveButton = new() { Content = "Save", Width = 90, HorizontalAlignment = HorizontalAlignment.Right };
 
     protected TConfig InitialConfig { get; }
 
@@ -73,6 +75,8 @@ public abstract class EventActionMappingsWindow<TConfig> : Window where TConfig 
         InitialConfig = config;
         Mappings = new ObservableCollection<EventActionMapping>(config.Mappings);
         dispatcher = new EventActionDispatcher(() => BuildConfig().Mappings, BuildContext);
+
+        SaveButton.Click += async (_, _) => await OnSaveAsync().ConfigureAwait(true);
     }
 
     protected abstract TConfig BuildConfig();
@@ -336,16 +340,23 @@ public abstract class EventActionMappingsWindow<TConfig> : Window where TConfig 
             MappingsList.SelectedItem = updated;
     }
 
-    protected void OnSave()
+    private async Task OnSaveAsync()
     {
+        SaveButton.IsEnabled = false;
+        StatusText.Text = "Saving...";
         try
         {
-            configStore.Save(BuildConfig());
+            var config = BuildConfig();
+            await Task.Run(() => configStore.Save(config)).ConfigureAwait(true);
             StatusText.Text = $"Saved to {configStore.ConfigFilePath}";
         }
         catch (Exception ex)
         {
             StatusText.Text = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            SaveButton.IsEnabled = true;
         }
     }
 }
