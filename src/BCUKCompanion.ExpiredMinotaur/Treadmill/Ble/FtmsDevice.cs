@@ -293,9 +293,10 @@ public class FtmsDevice : IDisposable
         if (FitnessMachineStatus != null && _statusHandler != null)
             FitnessMachineStatus.ValueChanged -= _statusHandler;
 
+        _fitnessService?.Dispose();
+        _fitnessService = null;
         _device?.Dispose();
         _device = null;
-        _fitnessService = null;
         ControlPoint = TreadmillData = FitnessMachineStatus = SupportedSpeedRange = null;
     }
 
