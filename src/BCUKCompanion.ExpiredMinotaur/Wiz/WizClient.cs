@@ -121,7 +121,13 @@ public sealed class WizClient
             }
             catch (SocketException)
             {
-                yield break;
+                // A broadcast send routinely provokes an ICMP "port unreachable" from some
+                // other host on the LAN that isn't listening on the Wiz port; on Windows this
+                // surfaces as a SocketException (WSAECONNRESET) on the shared socket's next
+                // ReceiveAsync. That's not a reason to give up on discovery — it says nothing
+                // about whether real Wiz devices are still about to reply — so skip it and keep
+                // listening until the overall discovery window (cts) elapses.
+                continue;
             }
 
             var ipAddress = received.RemoteEndPoint.Address.ToString();
