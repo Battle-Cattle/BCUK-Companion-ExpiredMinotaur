@@ -342,7 +342,11 @@ public abstract class EventActionMappingsWindow<TConfig> : Window where TConfig 
 
     private async Task OnSaveAsync()
     {
-        SaveButton.IsEnabled = false;
+        // Disable the whole window, not just SaveButton: BuildConfig() below snapshots the
+        // current mappings/devices, and configStore.Save writes that snapshot atomically. If
+        // any editable control stayed live during the save, an edit made mid-save wouldn't be
+        // in the snapshot, yet "Saved to ..." would still claim it was persisted.
+        IsEnabled = false;
         StatusText.Text = "Saving...";
         try
         {
@@ -356,7 +360,7 @@ public abstract class EventActionMappingsWindow<TConfig> : Window where TConfig 
         }
         finally
         {
-            SaveButton.IsEnabled = true;
+            IsEnabled = true;
         }
     }
 }
