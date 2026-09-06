@@ -74,22 +74,36 @@ public class FtmsDevice : IDisposable
             ScanningMode = BluetoothLEScanningMode.Active
         };
 
-        watcher.Received += (sender, args) =>
+        // The Received callback and the timeout continuation can both observe an
+        // incomplete tcs at the same time (the callback runs on a background
+        // advertisement-watcher thread, the timeout on the thread pool), so a plain
+        // `if (!tcs.Task.IsCompleted)` guard on either side is a race: a device found
+        // right at the timeout boundary could have its address discarded in favor of a
+        // `null` result. This gate makes "who gets to stop the watcher, detach the
+        // handler, and complete tcs" atomic — only the first caller to flip it wins.
+        var completionGate = 0;
+
+        TypedEventHandler<BluetoothLEAdvertisementWatcher, BluetoothLEAdvertisementReceivedEventArgs>? handler = null;
+        handler = (sender, args) =>
         {
-            if (args.Advertisement.ServiceUuids.Contains(FtmsConstants.FitnessMachineService))
+            if (args.Advertisement.ServiceUuids.Contains(FtmsConstants.FitnessMachineService)
+                && Interlocked.CompareExchange(ref completionGate, 1, 0) == 0)
             {
                 watcher.Stop();
+                watcher.Received -= handler;
                 tcs.TrySetResult(args.BluetoothAddress);
             }
         };
+        watcher.Received += handler;
 
         watcher.Start();
 
         _ = Task.Delay(timeout).ContinueWith(_ =>
         {
-            if (!tcs.Task.IsCompleted)
+            if (Interlocked.CompareExchange(ref completionGate, 1, 0) == 0)
             {
                 watcher.Stop();
+                watcher.Received -= handler;
                 tcs.TrySetResult(null);
             }
         });

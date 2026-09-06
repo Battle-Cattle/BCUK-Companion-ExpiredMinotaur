@@ -62,6 +62,10 @@ public sealed class WizActionEditDialog : Window
     public WizActionEditDialog(IReadOnlyList<WizDevice> availableDevices, IEventAction? existing = null)
     {
         devices = new ObservableCollection<WizDevice>(availableDevices);
+        // WizActionContext.Client is non-nullable, but this dialog only ever calls
+        // IEventAction.Validate() (device-resolution/range checks) against this context,
+        // never ExecuteAsync() — so this WizClient is never used to send anything. Its
+        // constructor does no I/O of its own; it's a throwaway to satisfy the constructor.
         context = new WizActionContext(new WizClient(), devices);
 
         Title = existing is null ? "Add Action" : "Edit Action";
