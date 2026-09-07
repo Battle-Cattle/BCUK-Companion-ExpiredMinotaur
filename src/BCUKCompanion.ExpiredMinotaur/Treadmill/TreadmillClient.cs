@@ -291,8 +291,6 @@ public sealed class TreadmillClient : IDisposable
 
     public void Dispose()
     {
-        keepAliveTimer.Dispose();
-
         // Same race DisconnectAsync() guards against: without the lock, a concurrent
         // NudgeSpeedAsync/SendKeepAliveAsync could Release() a SemaphoreSlim we've
         // already disposed, throwing ObjectDisposedException out of their finally block.
@@ -300,13 +298,16 @@ public sealed class TreadmillClient : IDisposable
         // its whole BLE scan + first-reading wait (up to ScanTimeout + FirstReadingTimeout,
         // ~13s), and an unbounded wait here would stall a WPF shutdown path for that long.
         // If we time out, a ConnectAsync is still in flight and will Release() this same
-        // SemaphoreSlim from its finally block once it unwinds — so skip disposing `device`
-        // *and* `writeLock` itself in that case, leaving both for the OS to reclaim on
-        // process exit, rather than risk that later Release() throwing ObjectDisposedException.
+        // SemaphoreSlim from its finally block once it unwinds, and may still call
+        // keepAliveTimer.Change(...) on its success path — so skip disposing `device`,
+        // `writeLock`, *and* `keepAliveTimer` in that case, leaving all three for the OS to
+        // reclaim on process exit, rather than risk ObjectDisposedException out of that
+        // later Release()/Change() call.
         if (writeLock.Wait(TimeSpan.FromSeconds(1)))
         {
             try
             {
+                keepAliveTimer.Dispose();
                 device.Dispose();
             }
             finally
