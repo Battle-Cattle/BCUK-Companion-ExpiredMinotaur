@@ -178,8 +178,6 @@ public sealed class TreadmillClient : IDisposable
     /// </summary>
     public async Task DisconnectAsync()
     {
-        keepAliveTimer.Change(Timeout.Infinite, Timeout.Infinite);
-
         // Wait for any write already in flight (Nudge or keep-alive) — or a ConnectAsync
         // still mid-flight, which now holds this same lock for its entire body — to release
         // the lock, so we never dispose the FtmsDevice a concurrent write/connect is still
@@ -188,6 +186,12 @@ public sealed class TreadmillClient : IDisposable
         await writeLock.WaitAsync().ConfigureAwait(false);
         try
         {
+            // Stop the timer only once we hold the lock: a ConnectAsync that was still
+            // in flight when DisconnectAsync was called can start the timer (at the tail of
+            // its own locked body) *after* an earlier, unlocked Change(Infinite) call here
+            // would have run, leaving keep-alive writes firing against a torn-down connection.
+            keepAliveTimer.Change(Timeout.Infinite, Timeout.Infinite);
+
             controlPointService = null;
             IsConnected = false;
             CurrentSpeedKmh = 0;
@@ -299,10 +303,9 @@ public sealed class TreadmillClient : IDisposable
         // ~13s), and an unbounded wait here would stall a WPF shutdown path for that long.
         // If we time out, a ConnectAsync is still in flight and will Release() this same
         // SemaphoreSlim from its finally block once it unwinds, and may still call
-        // keepAliveTimer.Change(...) on its success path — so skip disposing `device`,
-        // `writeLock`, *and* `keepAliveTimer` in that case, leaving all three for the OS to
-        // reclaim on process exit, rather than risk ObjectDisposedException out of that
-        // later Release()/Change() call.
+        // keepAliveTimer.Change(...) on its success path — so skip disposing `device` *and*
+        // `keepAliveTimer` in that case, leaving both for the OS to reclaim on process exit,
+        // rather than risk ObjectDisposedException out of that later Release()/Change() call.
         if (writeLock.Wait(TimeSpan.FromSeconds(1)))
         {
             try
@@ -314,7 +317,14 @@ public sealed class TreadmillClient : IDisposable
             {
                 writeLock.Release();
             }
-            writeLock.Dispose();
         }
+
+        // Deliberately never call writeLock.Dispose(): a Nudge/keep-alive/Connect call could
+        // already be queued on WaitAsync() when we get here (we only waited up to 1s above,
+        // not indefinitely), and disposing the SemaphoreSlim while another thread is waiting
+        // on or about to Release() it is itself a race (ObjectDisposedException either from
+        // that waiter or from its own Release()). SemaphoreSlim holds no unmanaged handle
+        // unless AvailableWaitHandle is touched (it never is here), so leaving it for the GC
+        // costs nothing.
     }
 }
