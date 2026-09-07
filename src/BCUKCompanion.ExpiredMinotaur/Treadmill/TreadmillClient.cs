@@ -152,6 +152,18 @@ public sealed class TreadmillClient : IDisposable
             // belt's actual current speed instead, waiting briefly for the first notification.
             var readingTask = firstSpeedReading.Task;
             var completed = await Task.WhenAny(readingTask, Task.Delay(FirstReadingTimeout, cancellationToken)).ConfigureAwait(false);
+
+            // Task.Delay(..., cancellationToken) transitions to Canceled (not Faulted) when the
+            // token fires, which still makes WhenAny complete — so without this check, a
+            // cancelled connect attempt falls into the "no reading yet" branch below and goes on
+            // to report success. Bail out the same way every other failure path here does
+            // (return false) rather than throw, so callers don't need to special-case this method.
+            if (cancellationToken.IsCancellationRequested)
+            {
+                RaiseStatus("Connect cancelled.");
+                return false;
+            }
+
             if (completed == readingTask)
             {
                 // The belt may genuinely be stopped (reporting 0 km/h) despite the "already
