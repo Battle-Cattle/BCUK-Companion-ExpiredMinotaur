@@ -130,6 +130,21 @@ public sealed class TreadmillClient : IDisposable
                 keepAliveTimer.Dispose();
                 device.Dispose();
             }
+            else if (!IsConnected && device.IsConnected)
+            {
+                // Setup failed or was cancelled (see ScanConnectAndConfigureAsync) *after*
+                // device.ConnectAsync had already established a live BLE connection — without
+                // this, that connection, its GATT subscriptions, and controlPointService would
+                // all be left dangling while this class reports itself disconnected. Swap in a
+                // fresh FtmsDevice (same pattern DisconnectAsync uses) rather than calling
+                // device.Dispose() in place, since a disposed FtmsDevice can't reconnect and
+                // has its events torn down (see FtmsDevice.Dispose).
+                controlPointService = null;
+                firstSpeedReading = null;
+                device.Dispose();
+                device = new FtmsDevice();
+                AttachDeviceEvents(device);
+            }
             writeLock.Release();
         }
     }
