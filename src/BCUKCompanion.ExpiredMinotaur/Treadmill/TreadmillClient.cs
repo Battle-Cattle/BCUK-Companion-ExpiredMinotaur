@@ -173,13 +173,9 @@ public sealed class TreadmillClient : IDisposable
 
             if (Volatile.Read(ref disposed) != 0)
             {
-                // Dispose() ran concurrently and its bounded wait for this lock timed out —
-                // it deliberately left `device`/`keepAliveTimer` undisposed for exactly this
-                // case (see Dispose()'s comment). Finish that cleanup here instead of
-                // publishing a connected state for an object whose owner already tried to
-                // tear it down.
-                keepAliveTimer.Dispose();
-                device.Dispose();
+                // Dispose() ran concurrently — don't publish a connected state for an object
+                // whose owner already tried to tear it down. Cleanup happens in `finally`
+                // below, alongside every other early-return path in this method.
                 return false;
             }
 
@@ -192,6 +188,18 @@ public sealed class TreadmillClient : IDisposable
         }
         finally
         {
+            if (Volatile.Read(ref disposed) != 0 && !IsConnected)
+            {
+                // Dispose() ran concurrently at some point during this call — its bounded wait
+                // for this lock timed out because we were still scanning/connecting/reading
+                // setup state, so it deliberately left `device`/`keepAliveTimer` undisposed for
+                // exactly this situation (see Dispose()'s comment). Finish that cleanup here,
+                // on *every* early-return path above (not just the "about to report success"
+                // one), rather than leaking the BLE device and timer.
+                controlPointService = null;
+                keepAliveTimer.Dispose();
+                device.Dispose();
+            }
             writeLock.Release();
         }
     }
