@@ -299,8 +299,10 @@ public sealed class TreadmillClient : IDisposable
         // Bounded rather than an unbounded Wait(): ConnectAsync now holds this lock across
         // its whole BLE scan + first-reading wait (up to ScanTimeout + FirstReadingTimeout,
         // ~13s), and an unbounded wait here would stall a WPF shutdown path for that long.
-        // If we time out, the process is exiting anyway, so skip disposing `device` and let
-        // the OS reclaim the handle rather than block shutdown.
+        // If we time out, a ConnectAsync is still in flight and will Release() this same
+        // SemaphoreSlim from its finally block once it unwinds — so skip disposing `device`
+        // *and* `writeLock` itself in that case, leaving both for the OS to reclaim on
+        // process exit, rather than risk that later Release() throwing ObjectDisposedException.
         if (writeLock.Wait(TimeSpan.FromSeconds(1)))
         {
             try
@@ -311,7 +313,7 @@ public sealed class TreadmillClient : IDisposable
             {
                 writeLock.Release();
             }
+            writeLock.Dispose();
         }
-        writeLock.Dispose();
     }
 }
