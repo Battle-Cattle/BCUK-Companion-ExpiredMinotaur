@@ -99,95 +99,13 @@ public sealed class TreadmillClient : IDisposable
                 return false;
             }
 
-            RaiseStatus("Scanning...");
-            var address = await FtmsDevice.FindFitnessMachineAddressAsync(ScanTimeout).ConfigureAwait(false);
-            if (address is null)
+            var ready = await ScanConnectAndConfigureAsync(cancellationToken).ConfigureAwait(false);
+            if (!ready || Volatile.Read(ref disposed) != 0)
             {
-                RaiseStatus("No fitness machine found. Is it powered on and in range?");
-                return false;
-            }
-
-            RaiseStatus("Connecting...");
-            var connected = await device.ConnectAsync(address.Value).ConfigureAwait(false);
-            if (!connected)
-            {
-                RaiseStatus("Connection failed.");
-                return false;
-            }
-
-            // Subscription for Treadmill Data notifications is wired up inside device.ConnectAsync
-            // above, so create this before anything else that awaits, in case a notification
-            // arrives while RequestControl/ReadSupportedSpeedRange are still in flight.
-            firstSpeedReading = new TaskCompletionSource<double>();
-
-            controlPointService = new ControlPointService(device);
-
-            // Supported speed range varies by how this treadmill is set up, so read it fresh on
-            // every connect instead of trusting the hardcoded defaults — falls back to those
-            // defaults if the read fails.
-            var speedRange = await device.ReadSupportedSpeedRangeAsync().ConfigureAwait(false);
-            if (speedRange is { } range)
-            {
-                MinSpeedKmh = range.MinKmh;
-                MaxSpeedKmh = range.MaxKmh;
-                SpeedStepKmh = range.IncrementKmh;
-                controlPointService.MinSpeedKmh = range.MinKmh;
-                controlPointService.MaxSpeedKmh = range.MaxKmh;
-            }
-            else
-            {
-                RaiseStatus($"Could not read Supported Speed Range (0x2AD4) — using defaults {MinSpeedKmh:0.0}-{MaxSpeedKmh:0.0} km/h.");
-            }
-
-            RaiseStatus("Requesting control...");
-            var controlResult = await controlPointService.RequestControlAsync().ConfigureAwait(false);
-            if (!controlResult.Accepted)
-            {
-                RaiseStatus($"Connected, but control request failed: {controlResult}");
-            }
-
-            // The belt is expected to already be moving when Connect is clicked — starting the
-            // keep-alive loop from a hardcoded minimum would immediately drag a live, running
-            // belt down to minimum the moment the app connects. Seed TargetSpeedKmh from the
-            // belt's actual current speed instead, waiting briefly for the first notification.
-            var readingTask = firstSpeedReading.Task;
-            var completed = await Task.WhenAny(readingTask, Task.Delay(FirstReadingTimeout, cancellationToken)).ConfigureAwait(false);
-
-            // Task.Delay(..., cancellationToken) transitions to Canceled (not Faulted) when the
-            // token fires, which still makes WhenAny complete — so without this check, a
-            // cancelled connect attempt falls into the "no reading yet" branch below and goes on
-            // to report success. Bail out the same way every other failure path here does
-            // (return false) rather than throw, so callers don't need to special-case this method.
-            if (cancellationToken.IsCancellationRequested)
-            {
-                RaiseStatus("Connect cancelled.");
-                return false;
-            }
-
-            if (completed == readingTask)
-            {
-                // The belt may genuinely be stopped (reporting 0 km/h) despite the "already
-                // running" assumption — clamp into range so keep-alive never sends a target
-                // speed below the device's minimum, which SetTargetSpeedAsync rejects.
-                var reading = readingTask.Result;
-                TargetSpeedKmh = SnapAndClamp(reading);
-                if (reading < MinSpeedKmh)
-                {
-                    RaiseStatus($"Belt reports {reading:0.0} km/h (stopped) — starting keep-alive at the minimum, {MinSpeedKmh:0.0} km/h.");
-                }
-            }
-            else
-            {
-                TargetSpeedKmh = MinSpeedKmh;
-                RaiseStatus("No speed reading within 3s of connecting — the first Nudge may change speed unexpectedly.");
-            }
-            firstSpeedReading = null;
-
-            if (Volatile.Read(ref disposed) != 0)
-            {
-                // Dispose() ran concurrently — don't publish a connected state for an object
-                // whose owner already tried to tear it down. Cleanup happens in `finally`
-                // below, alongside every other early-return path in this method.
+                // Either a step above failed (already reported via RaiseStatus), or Dispose()
+                // ran concurrently — don't publish a connected state for an object whose owner
+                // already tried to tear it down. Cleanup happens in `finally` below, alongside
+                // every other early-return path in this method.
                 return false;
             }
 
@@ -214,6 +132,102 @@ public sealed class TreadmillClient : IDisposable
             }
             writeLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Scans for and connects to the treadmill, reads its setup-dependent state, and seeds
+    /// <see cref="TargetSpeedKmh"/> from its first reported speed. Must be called with
+    /// <see cref="writeLock"/> already held. Returns <see langword="false"/> (having already
+    /// raised a status describing why) on any failure or cancellation; the caller is
+    /// responsible for deciding what a successful return means for <see cref="IsConnected"/>.
+    /// </summary>
+    private async Task<bool> ScanConnectAndConfigureAsync(CancellationToken cancellationToken)
+    {
+        RaiseStatus("Scanning...");
+        var address = await FtmsDevice.FindFitnessMachineAddressAsync(ScanTimeout).ConfigureAwait(false);
+        if (address is null)
+        {
+            RaiseStatus("No fitness machine found. Is it powered on and in range?");
+            return false;
+        }
+
+        RaiseStatus("Connecting...");
+        var connected = await device.ConnectAsync(address.Value).ConfigureAwait(false);
+        if (!connected)
+        {
+            RaiseStatus("Connection failed.");
+            return false;
+        }
+
+        // Subscription for Treadmill Data notifications is wired up inside device.ConnectAsync
+        // above, so create this before anything else that awaits, in case a notification
+        // arrives while RequestControl/ReadSupportedSpeedRange are still in flight.
+        firstSpeedReading = new TaskCompletionSource<double>();
+
+        controlPointService = new ControlPointService(device);
+
+        // Supported speed range varies by how this treadmill is set up, so read it fresh on
+        // every connect instead of trusting the hardcoded defaults — falls back to those
+        // defaults if the read fails.
+        var speedRange = await device.ReadSupportedSpeedRangeAsync().ConfigureAwait(false);
+        if (speedRange is { } range)
+        {
+            MinSpeedKmh = range.MinKmh;
+            MaxSpeedKmh = range.MaxKmh;
+            SpeedStepKmh = range.IncrementKmh;
+            controlPointService.MinSpeedKmh = range.MinKmh;
+            controlPointService.MaxSpeedKmh = range.MaxKmh;
+        }
+        else
+        {
+            RaiseStatus($"Could not read Supported Speed Range (0x2AD4) — using defaults {MinSpeedKmh:0.0}-{MaxSpeedKmh:0.0} km/h.");
+        }
+
+        RaiseStatus("Requesting control...");
+        var controlResult = await controlPointService.RequestControlAsync().ConfigureAwait(false);
+        if (!controlResult.Accepted)
+        {
+            RaiseStatus($"Connected, but control request failed: {controlResult}");
+        }
+
+        // The belt is expected to already be moving when Connect is clicked — starting the
+        // keep-alive loop from a hardcoded minimum would immediately drag a live, running
+        // belt down to minimum the moment the app connects. Seed TargetSpeedKmh from the
+        // belt's actual current speed instead, waiting briefly for the first notification.
+        var readingTask = firstSpeedReading.Task;
+        var completed = await Task.WhenAny(readingTask, Task.Delay(FirstReadingTimeout, cancellationToken)).ConfigureAwait(false);
+
+        // Task.Delay(..., cancellationToken) transitions to Canceled (not Faulted) when the
+        // token fires, which still makes WhenAny complete — so without this check, a cancelled
+        // connect attempt falls into the "no reading yet" branch below and goes on to report
+        // success. Bail out the same way every other failure path here does (return false)
+        // rather than throw, so ConnectAsync doesn't need to special-case this method.
+        if (cancellationToken.IsCancellationRequested)
+        {
+            RaiseStatus("Connect cancelled.");
+            return false;
+        }
+
+        if (completed == readingTask)
+        {
+            // The belt may genuinely be stopped (reporting 0 km/h) despite the "already
+            // running" assumption — clamp into range so keep-alive never sends a target
+            // speed below the device's minimum, which SetTargetSpeedAsync rejects.
+            var reading = readingTask.Result;
+            TargetSpeedKmh = SnapAndClamp(reading);
+            if (reading < MinSpeedKmh)
+            {
+                RaiseStatus($"Belt reports {reading:0.0} km/h (stopped) — starting keep-alive at the minimum, {MinSpeedKmh:0.0} km/h.");
+            }
+        }
+        else
+        {
+            TargetSpeedKmh = MinSpeedKmh;
+            RaiseStatus("No speed reading within 3s of connecting — the first Nudge may change speed unexpectedly.");
+        }
+        firstSpeedReading = null;
+
+        return true;
     }
 
     /// <summary>
