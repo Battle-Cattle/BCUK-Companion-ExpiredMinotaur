@@ -23,13 +23,21 @@ public sealed class TreadmillClient : IDisposable
     // Connect is mid-use of, and then Connect's tail would unconditionally set
     // IsConnected = true and restart the keep-alive timer against state Disconnect already
     // tore down. Holding this lock across Connect's BLE scan/connect/read calls is safe
-    // rather than deadlock-prone: NudgeSpeedAsync/SendKeepAliveAsync both bail out on their
-    // IsConnected/controlPointService check *before* ever waiting on the lock, and the
-    // keep-alive timer isn't running until Connect itself starts it — so no other legitimate
-    // caller ever contends for the lock while a Connect (or Disconnect) is in flight; they
-    // just see IsConnected still false/controlPointService still null and no-op.
+    // rather than deadlock-prone: on an initial connect, NudgeSpeedAsync/SendKeepAliveAsync
+    // both bail out on their IsConnected/controlPointService check *before* ever waiting on
+    // the lock, since IsConnected/controlPointService are only set once Connect already holds
+    // it. During a reconnect, or while DisconnectAsync is waiting for the lock, that pre-lock
+    // check can still pass (IsConnected/controlPointService haven't been cleared yet) and the
+    // caller queues on writeLock — each method re-checks after acquiring it, so a queued
+    // caller that loses the race still safely no-ops instead of using torn-down state.
     private readonly SemaphoreSlim writeLock = new(1, 1);
     private readonly System.Threading.Timer keepAliveTimer;
+
+    // Interlocked-guarded: 0 = live, 1 = disposed. Set before Dispose() attempts to acquire
+    // writeLock, and checked by every other method right after it acquires the lock, so a
+    // Connect/Nudge/keep-alive call that was already queued when Dispose() ran never touches
+    // `device`/`keepAliveTimer` after they've been disposed.
+    private int disposed;
 
     // Not readonly: DisconnectAsync() swaps in a fresh instance so a later Connect can
     // scan/re-pair rather than reusing a torn-down device, matching the test app's Disconnect button.
@@ -86,6 +94,11 @@ public sealed class TreadmillClient : IDisposable
         await writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (Volatile.Read(ref disposed) != 0)
+            {
+                return false;
+            }
+
             RaiseStatus("Scanning...");
             var address = await FtmsDevice.FindFitnessMachineAddressAsync(ScanTimeout).ConfigureAwait(false);
             if (address is null)
@@ -186,6 +199,11 @@ public sealed class TreadmillClient : IDisposable
         await writeLock.WaitAsync().ConfigureAwait(false);
         try
         {
+            if (Volatile.Read(ref disposed) != 0)
+            {
+                return;
+            }
+
             // Stop the timer only once we hold the lock: a ConnectAsync that was still
             // in flight when DisconnectAsync was called can start the timer (at the tail of
             // its own locked body) *after* an earlier, unlocked Change(Infinite) call here
@@ -227,8 +245,9 @@ public sealed class TreadmillClient : IDisposable
         {
             // Re-check: DisconnectAsync only nulls controlPointService once it holds this
             // same lock, so a disconnect completing between the check above and acquiring
-            // the lock here would otherwise leave us dereferencing a null reference.
-            if (!IsConnected || controlPointService is null)
+            // the lock here would otherwise leave us dereferencing a null reference. Same for
+            // `disposed`: Dispose() only sets it while holding the lock too.
+            if (Volatile.Read(ref disposed) != 0 || !IsConnected || controlPointService is null)
             {
                 return false;
             }
@@ -274,7 +293,7 @@ public sealed class TreadmillClient : IDisposable
         await writeLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (!IsConnected || controlPointService is null)
+            if (Volatile.Read(ref disposed) != 0 || !IsConnected || controlPointService is null)
             {
                 return;
             }
@@ -295,6 +314,13 @@ public sealed class TreadmillClient : IDisposable
 
     public void Dispose()
     {
+        // Set before attempting the lock: any Connect/Nudge/keep-alive call still queued on
+        // writeLock re-checks this right after it acquires the lock (each method already had
+        // to re-check IsConnected/controlPointService there for the same reason), so it can
+        // never touch `device`/`keepAliveTimer` once we've disposed them below — even though
+        // this method doesn't hold the lock for their whole queue, only for its own turn.
+        Interlocked.Exchange(ref disposed, 1);
+
         // Same race DisconnectAsync() guards against: without the lock, a concurrent
         // NudgeSpeedAsync/SendKeepAliveAsync could Release() a SemaphoreSlim we've
         // already disposed, throwing ObjectDisposedException out of their finally block.
@@ -310,6 +336,8 @@ public sealed class TreadmillClient : IDisposable
         {
             try
             {
+                controlPointService = null;
+                IsConnected = false;
                 keepAliveTimer.Dispose();
                 device.Dispose();
             }
