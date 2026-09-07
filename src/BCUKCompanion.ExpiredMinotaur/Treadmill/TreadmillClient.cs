@@ -171,6 +171,18 @@ public sealed class TreadmillClient : IDisposable
             }
             firstSpeedReading = null;
 
+            if (Volatile.Read(ref disposed) != 0)
+            {
+                // Dispose() ran concurrently and its bounded wait for this lock timed out —
+                // it deliberately left `device`/`keepAliveTimer` undisposed for exactly this
+                // case (see Dispose()'s comment). Finish that cleanup here instead of
+                // publishing a connected state for an object whose owner already tried to
+                // tear it down.
+                keepAliveTimer.Dispose();
+                device.Dispose();
+                return false;
+            }
+
             IsConnected = true;
             keepAliveTimer.Change(KeepAliveInterval, KeepAliveInterval);
             RaiseStatus(device.LastConnectWarnings.Count > 0
