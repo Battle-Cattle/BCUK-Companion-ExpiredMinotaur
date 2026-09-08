@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
@@ -8,7 +9,9 @@ namespace BCUKCompanion.ExpiredMinotaur.Wiz;
 
 public sealed record WizDiscoveredDevice(string IpAddress, string ModuleName);
 
-public sealed record WizPilotStatus(bool State, int? Dimming, byte? R, byte? G, byte? B, int? Temp);
+// State is null when the device's getPilot response omits the "state" field (seen on some
+// plug firmware) — callers must treat that as "unknown," not silently assume off.
+public sealed record WizPilotStatus(bool? State, int? Dimming, byte? R, byte? G, byte? B, int? Temp);
 
 public sealed class WizClient
 {
@@ -70,7 +73,7 @@ public sealed class WizClient
                 return null;
             }
 
-            var state = result.TryGetProperty("state", out var stateEl) && stateEl.GetBoolean();
+            bool? state = result.TryGetProperty("state", out var stateEl) ? stateEl.GetBoolean() : null;
             int? dimming = result.TryGetProperty("dimming", out var dimmingEl) ? dimmingEl.GetInt32() : null;
             byte? r = result.TryGetProperty("r", out var rEl) ? rEl.GetByte() : null;
             byte? g = result.TryGetProperty("g", out var gEl) ? gEl.GetByte() : null;
@@ -183,6 +186,13 @@ public sealed class WizClient
         }
         catch (SocketException)
         {
+            return null;
+        }
+        catch (FormatException ex)
+        {
+            // Defense in depth: WizConfigStore.Load() already filters out devices with an
+            // unparsable IpAddress, but this guards any other caller that hands in a raw string.
+            Debug.WriteLine($"Wiz command to '{ipAddress}' failed: '{ipAddress}' is not a valid IP address ({ex.Message}).");
             return null;
         }
     }
