@@ -301,6 +301,7 @@ public sealed class TreadmillClient : IDisposable
         }
         finally
         {
+            FinishDeferredDisposalIfPending();
             writeLock.Release();
         }
 
