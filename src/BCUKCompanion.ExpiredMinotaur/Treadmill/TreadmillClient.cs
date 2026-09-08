@@ -121,6 +121,18 @@ public sealed class TreadmillClient : IDisposable
             }
 
             IsConnected = true;
+
+            if (Volatile.Read(ref disposed) != 0)
+            {
+                // Dispose() set the flag (it does so without holding writeLock, so it can
+                // happen at any point during this call, including right here) after our last
+                // check above but before this publish — decline to report success rather than
+                // handing back "connected" state whose owner already tried to dispose this
+                // object. `finally` below now triggers cleanup on `disposed` alone, so it will
+                // undo the IsConnected/timer state this block just set.
+                return false;
+            }
+
             keepAliveTimer.Change(KeepAliveInterval, KeepAliveInterval);
             RaiseStatus(device.LastConnectWarnings.Count > 0
                 ? $"Connected. WARNING: {string.Join(" | ", device.LastConnectWarnings)}"
@@ -129,19 +141,16 @@ public sealed class TreadmillClient : IDisposable
         }
         finally
         {
-            if (Volatile.Read(ref disposed) != 0 && !IsConnected)
-            {
-                // Dispose() ran concurrently at some point during this call — its bounded wait
-                // for this lock timed out because we were still scanning/connecting/reading
-                // setup state, so it deliberately left `device`/`keepAliveTimer` undisposed for
-                // exactly this situation (see Dispose()'s comment). Finish that cleanup here,
-                // on *every* early-return path above (not just the "about to report success"
-                // one), rather than leaking the BLE device and timer.
-                controlPointService = null;
-                keepAliveTimer.Dispose();
-                device.Dispose();
-            }
-            else if (!IsConnected && device.IsConnected)
+            // Dispose() ran concurrently at some point during this call — its bounded wait for
+            // writeLock timed out because we were still scanning/connecting/reading setup
+            // state (or it raced the IsConnected publish above), so it deliberately left
+            // `device`/`keepAliveTimer` undisposed for exactly this situation (see Dispose()'s
+            // comment). Finish that cleanup here, on *every* path above — including a
+            // just-published "success" — rather than leaking the BLE device and timer, or
+            // handing back a live connection whose owner already tried to dispose it.
+            FinishDeferredDisposalIfPending();
+
+            if (Volatile.Read(ref disposed) == 0 && !IsConnected && device.IsConnected)
             {
                 // Setup failed or was cancelled (see ScanConnectAndConfigureAsync) *after*
                 // device.ConnectAsync had already established a live BLE connection — without
