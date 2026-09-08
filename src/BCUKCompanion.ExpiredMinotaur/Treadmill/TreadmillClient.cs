@@ -99,6 +99,17 @@ public sealed class TreadmillClient : IDisposable
                 return false;
             }
 
+            if (IsConnected)
+            {
+                // FtmsDevice.ConnectAsync tears down the active BLE connection (via
+                // ReleaseCurrentDevice) before establishing a new one — if that new attempt
+                // then failed, this class would be left reporting IsConnected == true against
+                // a device that's no longer actually connected. Reject the reconnect outright
+                // rather than risk that; callers must Disconnect first.
+                RaiseStatus("Already connected.");
+                return false;
+            }
+
             var ready = await ScanConnectAndConfigureAsync(cancellationToken).ConfigureAwait(false);
             if (!ready || Volatile.Read(ref disposed) != 0)
             {
@@ -332,6 +343,7 @@ public sealed class TreadmillClient : IDisposable
         }
         finally
         {
+            FinishDeferredDisposalIfPending();
             writeLock.Release();
         }
     }
@@ -367,8 +379,31 @@ public sealed class TreadmillClient : IDisposable
         }
         finally
         {
+            FinishDeferredDisposalIfPending();
             writeLock.Release();
         }
+    }
+
+    /// <summary>
+    /// If Dispose() ran concurrently and its bounded 1s wait for <see cref="writeLock"/>
+    /// timed out because this call was still holding it (a BLE indication in
+    /// <see cref="ControlPointService.SetTargetSpeedAsync"/> can take up to 2s — longer than
+    /// Dispose()'s wait), finish that deferred cleanup here, right before releasing the lock,
+    /// rather than leaking <see cref="device"/>/<see cref="keepAliveTimer"/> until process
+    /// exit. Safe to call even when nothing is pending: <see cref="System.Threading.Timer.Dispose()"/>
+    /// and <see cref="FtmsDevice.Dispose"/> are both idempotent.
+    /// </summary>
+    private void FinishDeferredDisposalIfPending()
+    {
+        if (Volatile.Read(ref disposed) == 0)
+        {
+            return;
+        }
+
+        controlPointService = null;
+        IsConnected = false;
+        keepAliveTimer.Dispose();
+        device.Dispose();
     }
 
     private void RaiseStatus(string message) => StatusChanged?.Invoke(this, message);
