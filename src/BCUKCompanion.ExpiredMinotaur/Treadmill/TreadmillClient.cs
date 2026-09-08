@@ -322,7 +322,19 @@ public sealed class TreadmillClient : IDisposable
             return false;
         }
 
-        await writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // The lock was never acquired, so there's nothing to Release() — return here
+            // rather than falling into the try/finally below. Callers (see
+            // TreadmillNudgeSpeedAction's Validate() comment) rely on this method failing
+            // gracefully — return false, never throw — regardless of why it failed.
+            return false;
+        }
+
         try
         {
             // Re-check: DisconnectAsync only nulls controlPointService once it holds this
