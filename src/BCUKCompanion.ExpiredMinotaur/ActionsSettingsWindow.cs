@@ -1,33 +1,80 @@
 using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using BCUKCompanion.Core;
 using BCUKCompanion.Core.Actions;
+using BCUKCompanion.ExpiredMinotaur.Treadmill;
+using BCUKCompanion.ExpiredMinotaur.UI;
+using BCUKCompanion.ExpiredMinotaur.Wiz;
 using BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
+using BCUKCompanion.ExpiredMinotaur.Wiz.UI;
 using Button = System.Windows.Controls.Button;
 using ListBox = System.Windows.Controls.ListBox;
 using Orientation = System.Windows.Controls.Orientation;
 using TabControl = System.Windows.Controls.TabControl;
 
-namespace BCUKCompanion.ExpiredMinotaur.Wiz.UI;
+namespace BCUKCompanion.ExpiredMinotaur;
 
-public sealed class WizSettingsWindow : EventActionMappingsWindow<WizConfig>
+/// <summary>
+/// The single settings window for every integration: a "Devices" tab for Wiz devices, a
+/// Treadmill connection panel, and one "Event Mappings" tab whose actions can mix Wiz and
+/// Treadmill (and Delay) kinds in the same mapping — replacing the old separate
+/// WizSettingsWindow/TreadmillSettingsWindow, each of which only let a mapping use its own
+/// integration's action kinds.
+/// </summary>
+public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsConfig>
 {
-    private readonly WizClient client;
+    private readonly WizClient wizClient;
+    private readonly TreadmillClient treadmillClient;
     private readonly ObservableCollection<WizDevice> devices;
 
     private readonly ListBox devicesList = new() { Margin = new Thickness(0, 0, 0, 8), MinHeight = 200 };
 
-    public WizSettingsWindow(WizConfigStore configStore, WizClient client, Func<CompanionClient?>? getCompanionClient = null)
+    private readonly TextBlock treadmillStatusText = new() { Margin = new Thickness(0, 0, 0, 4) };
+    private readonly TextBlock treadmillSpeedText = new() { Margin = new Thickness(0, 0, 0, 8) };
+    private readonly Button treadmillConnectButton = new() { Content = "Connect Treadmill", Width = 130, Margin = new Thickness(0, 0, 8, 0) };
+    private readonly Button treadmillDisconnectButton = new() { Content = "Disconnect Treadmill", Width = 130 };
+
+    private readonly DispatcherTimer speedTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+
+    public ActionsSettingsWindow(
+        ActionsConfigStore configStore, WizClient wizClient, TreadmillClient treadmillClient, Func<CompanionClient?>? getCompanionClient = null)
         : base(configStore, configStore.Load(), getCompanionClient)
     {
-        this.client = client;
+        this.wizClient = wizClient;
+        this.treadmillClient = treadmillClient;
         devices = new ObservableCollection<WizDevice>(InitialConfig.Devices);
 
-        Title = "Wiz Devices";
-        Width = 640;
-        Height = 520;
+        Title = "Actions";
+        Width = 720;
+        Height = 560;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
+
+        // StatusChanged fires on whatever thread triggered it (a BLE callback thread, or the
+        // keep-alive timer's thread-pool thread) — marshal onto the UI thread ourselves.
+        treadmillClient.StatusChanged += OnTreadmillStatusChanged;
+
+        treadmillConnectButton.Click += async (_, _) => await OnTreadmillConnectAsync().ConfigureAwait(true);
+        treadmillDisconnectButton.Click += async (_, _) => await OnTreadmillDisconnectAsync().ConfigureAwait(true);
+
+        speedTimer.Tick += (_, _) => RefreshTreadmillSpeedText();
+        RefreshTreadmillSpeedText();
+        RefreshTreadmillConnectionButtons();
+        speedTimer.Start();
+
+        var treadmillButtonsPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 0, 0, 8),
+            Children = { treadmillConnectButton, treadmillDisconnectButton },
+        };
+
+        var topPanel = new StackPanel
+        {
+            Margin = new Thickness(12, 12, 12, 0),
+            Children = { treadmillButtonsPanel, treadmillStatusText, treadmillSpeedText },
+        };
 
         var tabs = new TabControl
         {
@@ -42,34 +89,37 @@ public sealed class WizSettingsWindow : EventActionMappingsWindow<WizConfig>
         bottomPanel.Children.Add(StatusText);
 
         var root = new DockPanel();
+        DockPanel.SetDock(topPanel, Dock.Top);
         DockPanel.SetDock(bottomPanel, Dock.Bottom);
+        root.Children.Add(topPanel);
         root.Children.Add(bottomPanel);
         root.Children.Add(tabs);
 
         Content = root;
 
         RefreshRewardTitleSuggestions();
+
+        Closed += (_, _) =>
+        {
+            speedTimer.Stop();
+            treadmillClient.StatusChanged -= OnTreadmillStatusChanged;
+        };
     }
 
-    protected override WizConfig BuildConfig() => new() { Devices = devices.ToList(), Mappings = Mappings.ToList() };
+    protected override ActionsConfig BuildConfig() => new() { Devices = devices.ToList(), Mappings = Mappings.ToList() };
 
-    protected override IEventActionContext BuildContext() => new WizActionContext(client, devices);
+    protected override IEventActionContext BuildContext() =>
+        new ActionsContext(new WizActionContext(wizClient, devices), new TreadmillActionContext(treadmillClient));
 
     protected override IEventAction? ShowAddActionDialog()
     {
-        if (devices.Count == 0)
-        {
-            StatusText.Text = "Add a device first.";
-            return null;
-        }
-
-        var dialog = new WizActionEditDialog(devices) { Owner = this };
+        var dialog = new ActionEditDialog(devices, treadmillClient) { Owner = this };
         return dialog.ShowDialog() == true ? dialog.Result : null;
     }
 
     protected override IEventAction? ShowEditActionDialog(IEventAction existing)
     {
-        var dialog = new WizActionEditDialog(devices, existing) { Owner = this };
+        var dialog = new ActionEditDialog(devices, treadmillClient, existing) { Owner = this };
         return dialog.ShowDialog() == true ? dialog.Result : null;
     }
 
@@ -173,7 +223,7 @@ public sealed class WizSettingsWindow : EventActionMappingsWindow<WizConfig>
 
     private void OnDiscoverDevices()
     {
-        var dialog = new WizDiscoverDevicesDialog(client, devices.Select(d => d.IpAddress).ToList()) { Owner = this };
+        var dialog = new WizDiscoverDevicesDialog(wizClient, devices.Select(d => d.IpAddress).ToList()) { Owner = this };
         if (dialog.ShowDialog() == true)
         {
             foreach (var device in dialog.AddedDevices)
@@ -194,5 +244,54 @@ public sealed class WizSettingsWindow : EventActionMappingsWindow<WizConfig>
                 ReplaceMappingActions(mapping, remaining);
         }
         return removedCount;
+    }
+
+    private void OnTreadmillStatusChanged(object? sender, string message) =>
+        Dispatcher.Invoke(() => treadmillStatusText.Text = message);
+
+    private void RefreshTreadmillSpeedText()
+    {
+        treadmillSpeedText.Text = $"Current: {treadmillClient.CurrentSpeedKmh:0.0} km/h   Target: {treadmillClient.TargetSpeedKmh:0.0} km/h";
+        RefreshTreadmillConnectionButtons();
+    }
+
+    private void RefreshTreadmillConnectionButtons()
+    {
+        treadmillConnectButton.IsEnabled = !treadmillClient.IsConnected;
+        treadmillDisconnectButton.IsEnabled = treadmillClient.IsConnected;
+    }
+
+    private async Task OnTreadmillConnectAsync()
+    {
+        treadmillConnectButton.IsEnabled = false;
+        try
+        {
+            await treadmillClient.ConnectAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            treadmillStatusText.Text = $"Connect failed: {ex.Message}";
+        }
+        finally
+        {
+            RefreshTreadmillConnectionButtons();
+        }
+    }
+
+    private async Task OnTreadmillDisconnectAsync()
+    {
+        treadmillDisconnectButton.IsEnabled = false;
+        try
+        {
+            await treadmillClient.DisconnectAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            treadmillStatusText.Text = $"Disconnect failed: {ex.Message}";
+        }
+        finally
+        {
+            RefreshTreadmillConnectionButtons();
+        }
     }
 }

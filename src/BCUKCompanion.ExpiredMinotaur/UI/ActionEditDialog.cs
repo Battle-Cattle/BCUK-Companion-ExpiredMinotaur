@@ -1,8 +1,12 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using BCUKCompanion.Core.Actions;
+using BCUKCompanion.ExpiredMinotaur.Treadmill;
+using BCUKCompanion.ExpiredMinotaur.Treadmill.Actions;
+using BCUKCompanion.ExpiredMinotaur.Wiz;
 using BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 using Brushes = System.Windows.Media.Brushes;
 using Button = System.Windows.Controls.Button;
@@ -12,14 +16,32 @@ using HorizontalAlignment = System.Windows.HorizontalAlignment;
 using Orientation = System.Windows.Controls.Orientation;
 using TextBox = System.Windows.Controls.TextBox;
 
-namespace BCUKCompanion.ExpiredMinotaur.Wiz.UI;
+namespace BCUKCompanion.ExpiredMinotaur.UI;
 
-public sealed class WizActionEditDialog : Window
+/// <summary>
+/// Single Add/Edit Action dialog covering every registered action kind (Wiz device actions,
+/// the Treadmill's NudgeSpeed, and Delay), so one <see cref="EventActionMapping"/> can mix
+/// action kinds from different integrations instead of each integration needing its own
+/// dialog. A top-level "Category" choice picks which integration's parameters to show; the
+/// Wiz category then reuses the original device-first flow (kind choices depend on the
+/// selected device's type/capabilities).
+/// </summary>
+public sealed class ActionEditDialog : Window
 {
+    private sealed record CategoryOption(string DisplayName)
+    {
+        public override string ToString() => DisplayName;
+    }
+
     private sealed record WizActionKindOption(string Kind, string DisplayName)
     {
         public override string ToString() => DisplayName;
     }
+
+    private static readonly CategoryOption WizCategory = new("Wiz Device");
+    private static readonly CategoryOption TreadmillCategory = new("Treadmill");
+    private static readonly CategoryOption DelayCategory = new("Delay");
+    private static readonly CategoryOption[] AllCategories = [WizCategory, TreadmillCategory, DelayCategory];
 
     private static readonly WizActionKindOption TurnOnOption = new(WizTurnOnAction.ActionKind, "TurnOn");
     private static readonly WizActionKindOption TurnOffOption = new(WizTurnOffAction.ActionKind, "TurnOff");
@@ -27,17 +49,23 @@ public sealed class WizActionEditDialog : Window
     private static readonly WizActionKindOption SetBrightnessOption = new(WizSetBrightnessAction.ActionKind, "SetBrightness");
     private static readonly WizActionKindOption SetColorOption = new(WizSetColorAction.ActionKind, "SetColor");
     private static readonly WizActionKindOption SetColorTemperatureOption = new(WizSetColorTemperatureAction.ActionKind, "SetColorTemperature");
-    private static readonly WizActionKindOption DelayOption = new(DelayAction.ActionKind, "Delay");
 
-    private static readonly WizActionKindOption[] PlugKinds = [TurnOnOption, TurnOffOption, ToggleOption, DelayOption];
-    private static readonly WizActionKindOption[] AllKinds =
-        [TurnOnOption, TurnOffOption, ToggleOption, SetBrightnessOption, SetColorOption, SetColorTemperatureOption, DelayOption];
+    private static readonly WizActionKindOption[] PlugKinds = [TurnOnOption, TurnOffOption, ToggleOption];
+    private static readonly WizActionKindOption[] AllWizKinds =
+        [TurnOnOption, TurnOffOption, ToggleOption, SetBrightnessOption, SetColorOption, SetColorTemperatureOption];
 
     private readonly ObservableCollection<WizDevice> devices;
-    private readonly WizActionContext context;
+    private readonly WizActionContext wizContext;
+    private readonly TreadmillActionContext treadmillContext;
+    private readonly IEventActionContext validationContext;
+
+    private readonly ComboBox categoryCombo = new() { Margin = new Thickness(0, 0, 0, 8) };
     private readonly ComboBox deviceCombo = new() { Margin = new Thickness(0, 0, 0, 8) };
-    private readonly ComboBox actionKindCombo = new() { Margin = new Thickness(0, 0, 0, 8) };
+    private readonly ComboBox wizKindCombo = new() { Margin = new Thickness(0, 0, 0, 8) };
     private readonly TextBlock errorText = new() { Foreground = Brushes.Red, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
+
+    private readonly StackPanel devicePanel;
+    private readonly StackPanel wizKindPanel;
 
     private readonly StackPanel brightnessPanel;
     private readonly Slider brightnessSlider = new() { Minimum = WizSetBrightnessAction.MinBrightness, Maximum = WizSetBrightnessAction.MaxBrightness, Value = 100, TickFrequency = 1, IsSnapToTickEnabled = true };
@@ -53,32 +81,50 @@ public sealed class WizActionEditDialog : Window
     private readonly Slider colorTempSlider = new() { Minimum = WizSetColorTemperatureAction.MinColorTemperatureKelvin, Maximum = WizSetColorTemperatureAction.MaxColorTemperatureKelvin, Value = 4000, TickFrequency = 100, IsSnapToTickEnabled = true };
     private readonly TextBlock colorTempValueText = new();
 
-    private readonly StackPanel devicePanel;
+    private readonly StackPanel deltaPanel;
+    private readonly TextBox deltaBox = new() { Text = "1.0" };
+
     private readonly StackPanel delayPanel;
     private readonly TextBox delayBox = new() { Text = "5" };
 
     public IEventAction? Result { get; private set; }
 
-    public WizActionEditDialog(IReadOnlyList<WizDevice> availableDevices, IEventAction? existing = null)
+    public ActionEditDialog(IReadOnlyList<WizDevice> availableDevices, TreadmillClient treadmillClient, IEventAction? existing = null)
     {
         devices = new ObservableCollection<WizDevice>(availableDevices);
-        // WizActionContext.Client is non-nullable, but this dialog only ever calls
-        // IEventAction.Validate() (device-resolution/range checks) against this context,
-        // never ExecuteAsync() — so this WizClient is never used to send anything. Its
-        // constructor does no I/O of its own; it's a throwaway to satisfy the constructor.
-        context = new WizActionContext(new WizClient(), devices);
+        // These are only used for IEventAction.Validate() below, never ExecuteAsync(), so a
+        // throwaway WizClient (no I/O in its constructor) is safe; the real TreadmillClient is
+        // passed in so Validate() sees accurate state if that ever matters.
+        wizContext = new WizActionContext(new WizClient(), devices);
+        treadmillContext = new TreadmillActionContext(treadmillClient);
+        validationContext = new ActionsContext(wizContext, treadmillContext);
 
         Title = existing is null ? "Add Action" : "Edit Action";
-        Width = 360;
+        Width = 380;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.NoResize;
 
+        categoryCombo.ItemsSource = AllCategories;
+        categoryCombo.SelectionChanged += (_, _) => RefreshCategoryVisibility();
+
         deviceCombo.ItemsSource = devices;
         deviceCombo.DisplayMemberPath = nameof(WizDevice.Name);
-        deviceCombo.SelectionChanged += (_, _) => RefreshActionKinds();
+        deviceCombo.SelectionChanged += (_, _) => RefreshWizKinds();
 
-        actionKindCombo.SelectionChanged += (_, _) => RefreshParameterPanelVisibility();
+        wizKindCombo.SelectionChanged += (_, _) => RefreshWizParameterPanelVisibility();
+
+        devicePanel = new StackPanel
+        {
+            Margin = new Thickness(0, 0, 0, 8),
+            Children = { new TextBlock { Text = "Device" }, deviceCombo },
+        };
+
+        wizKindPanel = new StackPanel
+        {
+            Margin = new Thickness(0, 0, 0, 8),
+            Children = { new TextBlock { Text = "Wiz action" }, wizKindCombo },
+        };
 
         brightnessSlider.ValueChanged += (_, _) => brightnessValueText.Text = $"{(int)brightnessSlider.Value}%";
         brightnessValueText.Text = $"{(int)brightnessSlider.Value}%";
@@ -138,6 +184,16 @@ public sealed class WizActionEditDialog : Window
         };
         DockPanel.SetDock(colorTempValueText, Dock.Right);
 
+        deltaPanel = new StackPanel
+        {
+            Margin = new Thickness(0, 0, 0, 8),
+            Children =
+            {
+                new TextBlock { Text = "Speed delta (km/h, negative to slow down)" },
+                deltaBox,
+            },
+        };
+
         delayPanel = new StackPanel
         {
             Margin = new Thickness(0, 0, 0, 8),
@@ -145,15 +201,6 @@ public sealed class WizActionEditDialog : Window
             {
                 new TextBlock { Text = $"Delay (seconds, {DelayAction.MinDelaySeconds}-{DelayAction.MaxDelaySeconds})" },
                 delayBox,
-            },
-        };
-
-        devicePanel = new StackPanel
-        {
-            Children =
-            {
-                new TextBlock { Text = "Device" },
-                deviceCombo,
             },
         };
 
@@ -176,66 +223,86 @@ public sealed class WizActionEditDialog : Window
             Margin = new Thickness(12),
             Children =
             {
+                new TextBlock { Text = "Category" },
+                categoryCombo,
                 devicePanel,
-                new TextBlock { Text = "Action" },
-                actionKindCombo,
+                wizKindPanel,
                 brightnessPanel,
                 colorPanel,
                 colorTempPanel,
+                deltaPanel,
                 delayPanel,
                 errorText,
                 buttonPanel,
             },
         };
 
-        if (existing is not null)
-        {
-            var existingDeviceId = (existing as WizDeviceActionBase)?.DeviceId;
-            deviceCombo.SelectedItem = devices.FirstOrDefault(d => d.Id == existingDeviceId);
-            RefreshActionKinds();
-            actionKindCombo.SelectedItem = (actionKindCombo.ItemsSource as IEnumerable<WizActionKindOption>)
-                ?.FirstOrDefault(o => o.Kind == existing.Kind);
-
-            switch (existing)
-            {
-                case WizSetBrightnessAction brightness:
-                    brightnessSlider.Value = brightness.Brightness;
-                    break;
-                case WizSetColorAction color:
-                    rSlider.Value = color.R;
-                    gSlider.Value = color.G;
-                    bSlider.Value = color.B;
-                    break;
-                case WizSetColorTemperatureAction colorTemp:
-                    colorTempSlider.Value = colorTemp.ColorTemperatureKelvin;
-                    break;
-                case DelayAction delay:
-                    delayBox.Text = delay.DelaySeconds.ToString();
-                    break;
-            }
-        }
-        else if (devices.Count > 0)
-        {
-            deviceCombo.SelectedIndex = 0;
-        }
-
-        RefreshParameterPanelVisibility();
+        InitializeFromExisting(existing);
+        RefreshCategoryVisibility();
     }
 
     private WizDevice? SelectedDevice => deviceCombo.SelectedItem as WizDevice;
 
-    private void RefreshActionKinds()
+    private void InitializeFromExisting(IEventAction? existing)
+    {
+        switch (existing)
+        {
+            case WizDeviceActionBase wiz:
+                categoryCombo.SelectedItem = WizCategory;
+                deviceCombo.SelectedItem = devices.FirstOrDefault(d => d.Id == wiz.DeviceId);
+                RefreshWizKinds();
+                wizKindCombo.SelectedItem = (wizKindCombo.ItemsSource as IEnumerable<WizActionKindOption>)
+                    ?.FirstOrDefault(o => o.Kind == wiz.Kind);
+
+                switch (wiz)
+                {
+                    case WizSetBrightnessAction brightness:
+                        brightnessSlider.Value = brightness.Brightness;
+                        break;
+                    case WizSetColorAction color:
+                        rSlider.Value = color.R;
+                        gSlider.Value = color.G;
+                        bSlider.Value = color.B;
+                        break;
+                    case WizSetColorTemperatureAction colorTemp:
+                        colorTempSlider.Value = colorTemp.ColorTemperatureKelvin;
+                        break;
+                }
+                break;
+
+            case TreadmillNudgeSpeedAction nudge:
+                categoryCombo.SelectedItem = TreadmillCategory;
+                deltaBox.Text = nudge.DeltaKmh.ToString("0.0", CultureInfo.InvariantCulture);
+                break;
+
+            case DelayAction delay:
+                categoryCombo.SelectedItem = DelayCategory;
+                delayBox.Text = delay.DelaySeconds.ToString();
+                break;
+
+            default:
+                categoryCombo.SelectedItem = devices.Count > 0 ? WizCategory : TreadmillCategory;
+                if (devices.Count > 0)
+                {
+                    deviceCombo.SelectedIndex = 0;
+                }
+                RefreshWizKinds();
+                break;
+        }
+    }
+
+    private void RefreshWizKinds()
     {
         var device = SelectedDevice;
         var kinds = device is null
-            ? new[] { DelayOption }
+            ? Array.Empty<WizActionKindOption>()
             : device.DeviceType == WizDeviceType.Plug
                 ? PlugKinds
-                : AllKinds.Where(kind => IsKindSupported(kind.Kind, device)).ToArray();
+                : AllWizKinds.Where(kind => IsKindSupported(kind.Kind, device)).ToArray();
 
-        var previouslySelected = actionKindCombo.SelectedItem as WizActionKindOption;
-        actionKindCombo.ItemsSource = kinds;
-        actionKindCombo.SelectedItem = previouslySelected is { } option && kinds.Contains(option)
+        var previouslySelected = wizKindCombo.SelectedItem as WizActionKindOption;
+        wizKindCombo.ItemsSource = kinds;
+        wizKindCombo.SelectedItem = previouslySelected is { } option && kinds.Contains(option)
             ? option
             : kinds.FirstOrDefault();
     }
@@ -248,14 +315,23 @@ public sealed class WizActionEditDialog : Window
         _ => true,
     };
 
-    private void RefreshParameterPanelVisibility()
+    private void RefreshCategoryVisibility()
     {
-        var kind = (actionKindCombo.SelectedItem as WizActionKindOption)?.Kind;
+        var category = categoryCombo.SelectedItem as CategoryOption;
+        devicePanel.Visibility = category == WizCategory ? Visibility.Visible : Visibility.Collapsed;
+        wizKindPanel.Visibility = category == WizCategory ? Visibility.Visible : Visibility.Collapsed;
+        deltaPanel.Visibility = category == TreadmillCategory ? Visibility.Visible : Visibility.Collapsed;
+        delayPanel.Visibility = category == DelayCategory ? Visibility.Visible : Visibility.Collapsed;
+        RefreshWizParameterPanelVisibility();
+    }
+
+    private void RefreshWizParameterPanelVisibility()
+    {
+        var category = categoryCombo.SelectedItem as CategoryOption;
+        var kind = category == WizCategory ? (wizKindCombo.SelectedItem as WizActionKindOption)?.Kind : null;
         brightnessPanel.Visibility = kind == SetBrightnessOption.Kind ? Visibility.Visible : Visibility.Collapsed;
         colorPanel.Visibility = kind == SetColorOption.Kind ? Visibility.Visible : Visibility.Collapsed;
         colorTempPanel.Visibility = kind == SetColorTemperatureOption.Kind ? Visibility.Visible : Visibility.Collapsed;
-        delayPanel.Visibility = kind == DelayOption.Kind ? Visibility.Visible : Visibility.Collapsed;
-        devicePanel.Visibility = kind == DelayOption.Kind ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void UpdateColorSwatch()
@@ -277,27 +353,25 @@ public sealed class WizActionEditDialog : Window
 
     private (IEventAction? action, string? error) BuildAction()
     {
-        if (actionKindCombo.SelectedItem is not WizActionKindOption option)
-            return (null, "Select an action.");
+        if (categoryCombo.SelectedItem is not CategoryOption category)
+            return (null, "Select a category.");
 
-        return option.Kind == DelayAction.ActionKind
-            ? BuildDelayAction()
-            : BuildDeviceAction(option);
+        return category switch
+        {
+            _ when category == WizCategory => BuildWizAction(),
+            _ when category == TreadmillCategory => BuildNudgeSpeedAction(),
+            _ when category == DelayCategory => BuildDelayAction(),
+            _ => (null, "Select a category."),
+        };
     }
 
-    private (IEventAction?, string?) BuildDelayAction()
-    {
-        if (!int.TryParse(delayBox.Text.Trim(), out var seconds))
-            return (null, "Enter a whole number of seconds.");
-        var action = new DelayAction { DelaySeconds = seconds };
-        var errors = action.Validate(context);
-        return errors.Count > 0 ? (null, string.Join("\n", errors)) : (action, null);
-    }
-
-    private (IEventAction?, string?) BuildDeviceAction(WizActionKindOption option)
+    private (IEventAction?, string?) BuildWizAction()
     {
         if (SelectedDevice is not { } device)
-            return (null, "Select a device and action.");
+            return (null, "Select a device.");
+        if (wizKindCombo.SelectedItem is not WizActionKindOption option)
+            return (null, "Select an action.");
+
         IEventAction action = option.Kind switch
         {
             WizTurnOnAction.ActionKind => new WizTurnOnAction { DeviceId = device.Id },
@@ -308,7 +382,25 @@ public sealed class WizActionEditDialog : Window
             WizSetColorTemperatureAction.ActionKind => new WizSetColorTemperatureAction { DeviceId = device.Id, ColorTemperatureKelvin = (int)colorTempSlider.Value },
             _ => throw new InvalidOperationException($"Unknown action kind \"{option.Kind}\"."),
         };
-        var errors = action.Validate(context);
+        var errors = action.Validate(validationContext);
+        return errors.Count > 0 ? (null, string.Join("\n", errors)) : (action, null);
+    }
+
+    private (IEventAction?, string?) BuildNudgeSpeedAction()
+    {
+        if (!double.TryParse(deltaBox.Text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var delta))
+            return (null, "Enter a numeric speed delta.");
+        var action = new TreadmillNudgeSpeedAction { DeltaKmh = delta };
+        var errors = action.Validate(validationContext);
+        return errors.Count > 0 ? (null, string.Join("\n", errors)) : (action, null);
+    }
+
+    private (IEventAction?, string?) BuildDelayAction()
+    {
+        if (!int.TryParse(delayBox.Text.Trim(), out var seconds))
+            return (null, "Enter a whole number of seconds.");
+        var action = new DelayAction { DelaySeconds = seconds };
+        var errors = action.Validate(validationContext);
         return errors.Count > 0 ? (null, string.Join("\n", errors)) : (action, null);
     }
 }

@@ -24,11 +24,10 @@ public interface IEventActionMappingsConfig
 }
 
 /// <summary>
-/// The "Event Mappings" tab (reward title -> ordered actions, with Add/Edit/Remove/Test) is
-/// identical between <c>WizSettingsWindow</c> and <c>TreadmillSettingsWindow</c> apart from how
-/// each integration builds its action-edit dialog and its own config shape. This base class owns
-/// that shared tab and its handlers; window chrome (title, size, any extra tabs/panels) stays
-/// with each subclass.
+/// Owns the "Event Mappings" tab (reward title -> ordered actions, with Add/Edit/Remove/Test)
+/// shared by every settings window built on this base — currently just
+/// <c>ActionsSettingsWindow</c> — while leaving window chrome (title, size, any extra
+/// tabs/panels) to the subclass.
 /// </summary>
 public abstract class EventActionMappingsWindow<TConfig> : Window where TConfig : IEventActionMappingsConfig, new()
 {
