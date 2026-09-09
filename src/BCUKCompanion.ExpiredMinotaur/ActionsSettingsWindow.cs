@@ -9,6 +9,7 @@ using BCUKCompanion.ExpiredMinotaur.UI;
 using BCUKCompanion.ExpiredMinotaur.Wiz;
 using BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 using BCUKCompanion.ExpiredMinotaur.Wiz.UI;
+using BCUKCompanion.TrayApp.Actions;
 using Button = System.Windows.Controls.Button;
 using ListBox = System.Windows.Controls.ListBox;
 using Orientation = System.Windows.Controls.Orientation;

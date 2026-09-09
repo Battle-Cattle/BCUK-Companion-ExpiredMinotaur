@@ -1,5 +1,6 @@
 using BCUKCompanion.Core.Actions;
 using BCUKCompanion.ExpiredMinotaur.Wiz;
+using BCUKCompanion.TrayApp.Actions;
 
 namespace BCUKCompanion.ExpiredMinotaur;
 
