@@ -73,10 +73,11 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
         var options = new JsonSerializerOptions { Converters = { new EventActionJsonConverter(registry) } };
         var devices = new List<WizDevice>();
         var mappings = new List<EventActionMapping>();
+        var migratedEverything = true;
 
         if (File.Exists(wizPath))
         {
-            TryDeserializeLegacyFile<LegacyWizConfig>(wizPath, options, legacy =>
+            migratedEverything &= TryDeserializeLegacyFile<LegacyWizConfig>(wizPath, options, legacy =>
             {
                 devices.AddRange(legacy.Devices);
                 mappings.AddRange(legacy.Mappings);
@@ -85,16 +86,25 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
 
         if (File.Exists(treadmillPath))
         {
-            TryDeserializeLegacyFile<LegacyTreadmillConfig>(treadmillPath, options, legacy =>
+            migratedEverything &= TryDeserializeLegacyFile<LegacyTreadmillConfig>(treadmillPath, options, legacy =>
                 mappings.AddRange(legacy.Mappings));
         }
 
         var migrated = new ActionsConfig { Devices = devices, Mappings = mappings };
-        Save(migrated);
+
+        // Only persist (and so stop re-attempting migration on every Load()) once every
+        // existing legacy file was read successfully - saving a partial result here would
+        // make actions-config.json exist from then on, and Load() only migrates when it's
+        // still missing, permanently losing whatever the failed file held.
+        if (migratedEverything)
+        {
+            Save(migrated);
+        }
+
         return migrated;
     }
 
-    private static void TryDeserializeLegacyFile<TLegacy>(string path, JsonSerializerOptions options, Action<TLegacy> onSuccess)
+    private static bool TryDeserializeLegacyFile<TLegacy>(string path, JsonSerializerOptions options, Action<TLegacy> onSuccess)
     {
         try
         {
@@ -103,10 +113,12 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
             {
                 onSuccess(legacy);
             }
+            return true;
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
             Debug.WriteLine($"Failed to migrate legacy config '{path}': {ex}");
+            return false;
         }
     }
 }
