@@ -39,6 +39,11 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
 
     private readonly DispatcherTimer speedTimer = new() { Interval = TimeSpan.FromSeconds(1) };
 
+    // Tracks a Connect/Disconnect in flight so the 1-second speedTimer tick doesn't re-enable
+    // the button mid-operation (TreadmillClient.IsConnected alone doesn't reflect "connecting"),
+    // which would let a second click queue another request behind TreadmillClient's write lock.
+    private bool treadmillConnectionOperationInProgress;
+
     public ActionsSettingsWindow(
         ActionsConfigStore configStore, WizClient wizClient, TreadmillClient treadmillClient, Func<CompanionClient?>? getCompanionClient = null)
         : base(configStore, configStore.Load(), getCompanionClient)
@@ -258,13 +263,21 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
 
     private void RefreshTreadmillConnectionButtons()
     {
+        if (treadmillConnectionOperationInProgress)
+        {
+            treadmillConnectButton.IsEnabled = false;
+            treadmillDisconnectButton.IsEnabled = false;
+            return;
+        }
+
         treadmillConnectButton.IsEnabled = !treadmillClient.IsConnected;
         treadmillDisconnectButton.IsEnabled = treadmillClient.IsConnected;
     }
 
     private async Task OnTreadmillConnectAsync()
     {
-        treadmillConnectButton.IsEnabled = false;
+        treadmillConnectionOperationInProgress = true;
+        RefreshTreadmillConnectionButtons();
         try
         {
             await treadmillClient.ConnectAsync().ConfigureAwait(true);
@@ -275,13 +288,15 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
         }
         finally
         {
+            treadmillConnectionOperationInProgress = false;
             RefreshTreadmillConnectionButtons();
         }
     }
 
     private async Task OnTreadmillDisconnectAsync()
     {
-        treadmillDisconnectButton.IsEnabled = false;
+        treadmillConnectionOperationInProgress = true;
+        RefreshTreadmillConnectionButtons();
         try
         {
             await treadmillClient.DisconnectAsync().ConfigureAwait(true);
@@ -292,6 +307,7 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
         }
         finally
         {
+            treadmillConnectionOperationInProgress = false;
             RefreshTreadmillConnectionButtons();
         }
     }

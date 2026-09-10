@@ -272,7 +272,7 @@ public sealed class ActionEditDialog : Window
 
             case TreadmillNudgeSpeedAction nudge:
                 categoryCombo.SelectedItem = TreadmillCategory;
-                deltaBox.Text = nudge.DeltaKmh.ToString("0.0", CultureInfo.InvariantCulture);
+                deltaBox.Text = nudge.DeltaKmh.ToString("R", CultureInfo.InvariantCulture);
                 break;
 
             case DelayAction delay:
@@ -388,7 +388,8 @@ public sealed class ActionEditDialog : Window
 
     private (IEventAction?, string?) BuildNudgeSpeedAction()
     {
-        if (!double.TryParse(deltaBox.Text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var delta))
+        if (!double.TryParse(deltaBox.Text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var delta)
+            || !double.IsFinite(delta))
             return (null, "Enter a numeric speed delta.");
         var action = new TreadmillNudgeSpeedAction { DeltaKmh = delta };
         var errors = action.Validate(validationContext);
