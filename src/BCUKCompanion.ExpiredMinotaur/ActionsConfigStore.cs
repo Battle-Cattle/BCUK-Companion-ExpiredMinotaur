@@ -121,7 +121,8 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
             var legacy = JsonSerializer.Deserialize<TLegacy>(File.ReadAllText(path), options);
             if (legacy is null)
             {
-                return true;
+                Debug.WriteLine($"Failed to migrate legacy config '{path}': deserialized to null.");
+                return false;
             }
 
             if (!isValid(legacy))
