@@ -190,7 +190,7 @@ public sealed class WizClient
         }
         catch (FormatException ex)
         {
-            // Defense in depth: WizConfigStore.Load() already filters out devices with an
+            // Defense in depth: ActionsConfigStore.Load() already filters out devices with an
             // unparsable IpAddress, but this guards any other caller that hands in a raw string.
             Debug.WriteLine($"Wiz command to '{ipAddress}' failed: '{ipAddress}' is not a valid IP address ({ex.Message}).");
             return null;

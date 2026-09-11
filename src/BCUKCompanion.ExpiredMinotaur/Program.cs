@@ -4,10 +4,8 @@ using BCUKCompanion.Core;
 using BCUKCompanion.Core.Actions;
 using BCUKCompanion.ExpiredMinotaur.Treadmill;
 using BCUKCompanion.ExpiredMinotaur.Treadmill.Actions;
-using BCUKCompanion.ExpiredMinotaur.Treadmill.UI;
 using BCUKCompanion.ExpiredMinotaur.Wiz;
 using BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
-using BCUKCompanion.ExpiredMinotaur.Wiz.UI;
 using BCUKCompanion.TrayApp;
 
 namespace BCUKCompanion.ExpiredMinotaur;
@@ -28,17 +26,11 @@ internal static class Program
         registry.Register<WizSetColorTemperatureAction>(WizSetColorTemperatureAction.ActionKind);
         registry.Register<TreadmillNudgeSpeedAction>(TreadmillNudgeSpeedAction.ActionKind);
 
-        var store = new WizConfigStore(DataFolderName, registry);
+        var store = new ActionsConfigStore(DataFolderName, registry);
         var client = new WizClient();
-
-        var treadmillStore = new TreadmillConfigStore(DataFolderName, registry);
         var treadmillClient = new TreadmillClient();
-        var treadmillDispatcher = new EventActionDispatcher(
-            () => treadmillStore.Load().Mappings,
-            () => new TreadmillActionContext(treadmillClient));
 
-        WizSettingsWindow? settingsWindow = null;
-        TreadmillSettingsWindow? treadmillSettingsWindow = null;
+        ActionsSettingsWindow? settingsWindow = null;
 
         // Set via OnClientReady once the tray shell creates (or recreates, on a bot-host
         // change) its CompanionClient. Settings windows read this through a Func so they
@@ -57,43 +49,31 @@ internal static class Program
             OnTrayIconReady = balloon => showBalloon = balloon,
             OnBotEvent = e =>
             {
-                var wizDispatch = Task.Run(() =>
+                var dispatch = Task.Run(() =>
                 {
                     var config = store.Load();
                     var dispatcher = new EventActionDispatcher(
                         () => config.Mappings,
-                        () => new WizActionContext(client, config.Devices));
+                        () => new ActionsContext(
+                            new WizActionContext(client, config.Devices),
+                            new TreadmillActionContext(treadmillClient)));
                     return dispatcher.DispatchAsync(e);
                 });
-                wizDispatch.ContinueWith(
-                    t => Debug.WriteLine($"Wiz dispatch failed: {t.Exception}"),
+                dispatch.ContinueWith(
+                    t => Debug.WriteLine($"Action dispatch failed: {t.Exception}"),
                     TaskContinuationOptions.OnlyOnFaulted);
-                wizDispatch.ContinueWith(
-                    t => showBalloon?.Invoke("Wiz dispatch crashed", DescribeFault(t.Exception)),
+                dispatch.ContinueWith(
+                    t => showBalloon?.Invoke("Action dispatch crashed", DescribeFault(t.Exception)),
                     TaskContinuationOptions.OnlyOnFaulted);
-                wizDispatch.ContinueWith(
-                    t => ReportDispatchFailure(t.Result, "Wiz action failed", showBalloon),
-                    TaskContinuationOptions.OnlyOnRanToCompletion);
-
-                var treadmillDispatch = Task.Run(() => treadmillDispatcher.DispatchAsync(e));
-                treadmillDispatch.ContinueWith(
-                    t => Debug.WriteLine($"Treadmill dispatch failed: {t.Exception}"),
-                    TaskContinuationOptions.OnlyOnFaulted);
-                treadmillDispatch.ContinueWith(
-                    t => showBalloon?.Invoke("Treadmill dispatch crashed", DescribeFault(t.Exception)),
-                    TaskContinuationOptions.OnlyOnFaulted);
-                treadmillDispatch.ContinueWith(
-                    t => ReportDispatchFailure(t.Result, "Treadmill action failed", showBalloon),
+                dispatch.ContinueWith(
+                    t => ReportDispatchFailure(t.Result, "Action failed", showBalloon),
                     TaskContinuationOptions.OnlyOnRanToCompletion);
             },
             AdditionalMenuItems = new[]
             {
-                CreateSettingsMenuItem("Wiz Devices...",
-                    () => new WizSettingsWindow(store, client, () => companionClient),
+                CreateSettingsMenuItem("Actions...",
+                    () => new ActionsSettingsWindow(store, client, treadmillClient, () => companionClient),
                     () => settingsWindow, w => settingsWindow = w),
-                CreateSettingsMenuItem("Treadmill...",
-                    () => new TreadmillSettingsWindow(treadmillStore, treadmillClient, () => companionClient),
-                    () => treadmillSettingsWindow, w => treadmillSettingsWindow = w),
             },
         });
 
