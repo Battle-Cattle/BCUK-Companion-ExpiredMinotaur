@@ -205,13 +205,21 @@ public sealed class TreadmillClient : IDisposable
         // every connect instead of trusting the hardcoded defaults — falls back to those
         // defaults if the read fails.
         var speedRange = await device.ReadSupportedSpeedRangeAsync().ConfigureAwait(false);
-        if (speedRange is { } range)
+        if (speedRange is { IncrementKmh: > 0 } range)
         {
             MinSpeedKmh = range.MinKmh;
             MaxSpeedKmh = range.MaxKmh;
             SpeedStepKmh = range.IncrementKmh;
             controlPointService.MinSpeedKmh = range.MinKmh;
             controlPointService.MaxSpeedKmh = range.MaxKmh;
+        }
+        else if (speedRange is { } malformedRange)
+        {
+            // A zero (or negative) increment would make SnapAndClamp divide by zero and
+            // produce NaN, which silently slips past range checks (NaN comparisons are always
+            // false) and gets truncated to 0 km/h — so treat it the same as a failed read and
+            // keep the hardcoded default step instead.
+            RaiseStatus($"Supported Speed Range (0x2AD4) reported an invalid increment ({malformedRange.IncrementKmh:0.0}) — using default step {SpeedStepKmh:0.0} km/h.");
         }
         else
         {
