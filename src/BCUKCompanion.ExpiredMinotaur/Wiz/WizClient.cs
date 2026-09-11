@@ -48,7 +48,7 @@ public sealed class WizClient
             }
             return true;
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
         {
             return false;
         }
@@ -171,14 +171,24 @@ public sealed class WizClient
 
         try
         {
-            await udp.SendAsync(requestBytes, new IPEndPoint(IPAddress.Parse(ipAddress), WizPort), cancellationToken)
+            var targetAddress = IPAddress.Parse(ipAddress);
+            await udp.SendAsync(requestBytes, new IPEndPoint(targetAddress, WizPort), cancellationToken)
                 .ConfigureAwait(false);
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(timeout);
 
-            var result = await udp.ReceiveAsync(cts.Token).ConfigureAwait(false);
-            return Encoding.UTF8.GetString(result.Buffer);
+            // Loop rather than a single ReceiveAsync: a stray datagram from another host on the
+            // LAN (e.g. another Wiz device's own reply) can land on this ephemeral socket within
+            // the timeout window and must not be mistaken for the intended device's response.
+            while (true)
+            {
+                var result = await udp.ReceiveAsync(cts.Token).ConfigureAwait(false);
+                if (result.RemoteEndPoint.Address.Equals(targetAddress))
+                {
+                    return Encoding.UTF8.GetString(result.Buffer);
+                }
+            }
         }
         catch (OperationCanceledException)
         {
