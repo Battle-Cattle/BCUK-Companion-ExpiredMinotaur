@@ -77,17 +77,22 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
 
         if (File.Exists(wizPath))
         {
-            migratedEverything &= TryDeserializeLegacyFile<LegacyWizConfig>(wizPath, options, legacy =>
-            {
-                devices.AddRange(legacy.Devices);
-                mappings.AddRange(legacy.Mappings);
-            });
+            migratedEverything &= TryDeserializeLegacyFile<LegacyWizConfig>(
+                wizPath, options,
+                legacy => legacy.Devices is not null && legacy.Mappings is not null,
+                legacy =>
+                {
+                    devices.AddRange(legacy.Devices);
+                    mappings.AddRange(legacy.Mappings);
+                });
         }
 
         if (File.Exists(treadmillPath))
         {
-            migratedEverything &= TryDeserializeLegacyFile<LegacyTreadmillConfig>(treadmillPath, options, legacy =>
-                mappings.AddRange(legacy.Mappings));
+            migratedEverything &= TryDeserializeLegacyFile<LegacyTreadmillConfig>(
+                treadmillPath, options,
+                legacy => legacy.Mappings is not null,
+                legacy => mappings.AddRange(legacy.Mappings));
         }
 
         var migrated = new ActionsConfig { Devices = devices, Mappings = mappings };
@@ -104,15 +109,28 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
         return migrated;
     }
 
-    private static bool TryDeserializeLegacyFile<TLegacy>(string path, JsonSerializerOptions options, Action<TLegacy> onSuccess)
+    // isValid guards against a legacy file with an explicit JSON "null" for a required
+    // collection: System.Text.Json sets the property to null in that case (overriding the
+    // record's [] init default), and AddRange(null) would throw. Treat that the same as any
+    // other unreadable legacy file - a failed migration, not a crash.
+    private static bool TryDeserializeLegacyFile<TLegacy>(
+        string path, JsonSerializerOptions options, Func<TLegacy, bool> isValid, Action<TLegacy> onSuccess)
     {
         try
         {
             var legacy = JsonSerializer.Deserialize<TLegacy>(File.ReadAllText(path), options);
-            if (legacy is not null)
+            if (legacy is null)
             {
-                onSuccess(legacy);
+                return true;
             }
+
+            if (!isValid(legacy))
+            {
+                Debug.WriteLine($"Failed to migrate legacy config '{path}': a required collection was null.");
+                return false;
+            }
+
+            onSuccess(legacy);
             return true;
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
