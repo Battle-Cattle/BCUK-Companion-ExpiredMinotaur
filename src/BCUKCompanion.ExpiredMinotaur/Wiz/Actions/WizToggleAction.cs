@@ -15,19 +15,19 @@ public sealed class WizToggleAction : WizDeviceActionBase
 
     protected override IReadOnlyList<string> ValidateDeviceSpecific(WizDevice device) => [];
 
-    protected override async Task<object> BuildPayloadAsync(WizClient client, WizDevice device, CancellationToken cancellationToken)
+    // Overrides SendAsync rather than BuildPayloadAsync: an offline device or one that omits
+    // its "state" field is an ordinary dispatch failure here (matching every other Wiz action,
+    // which reports false rather than throwing), not an exceptional condition that should
+    // surface as "Action dispatch crashed".
+    protected override async Task<bool> SendAsync(WizClient client, WizDevice device, CancellationToken cancellationToken)
     {
         var status = await client.GetPilotAsync(device.IpAddress, cancellationToken: cancellationToken).ConfigureAwait(false);
-        if (status is null)
+        if (status?.State is not bool currentState)
         {
-            throw new InvalidOperationException("Device did not respond to status query.");
+            return false;
         }
 
-        if (status.State is not bool currentState)
-        {
-            throw new InvalidOperationException("Device did not report its current on/off state; cannot toggle.");
-        }
-
-        return new { state = !currentState };
+        return await client.SetPilotAsync(device.IpAddress, new { state = !currentState }, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
     }
 }
