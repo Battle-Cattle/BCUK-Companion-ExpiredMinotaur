@@ -203,7 +203,13 @@ public sealed class TreadmillClient : IDisposable
 
         // Supported speed range varies by how this treadmill is set up, so read it fresh on
         // every connect instead of trusting the hardcoded defaults — falls back to those
-        // defaults if the read fails.
+        // defaults if the read fails. Reset to the hardcoded defaults first: otherwise a
+        // reconnect to a different device with a malformed range would leave the previous
+        // device's values in place instead of the defaults the fallback status message claims.
+        MinSpeedKmh = FtmsConstants.MinSpeedKmh;
+        MaxSpeedKmh = FtmsConstants.MaxSpeedKmh;
+        SpeedStepKmh = FtmsConstants.SpeedStepKmh;
+
         var speedRange = await device.ReadSupportedSpeedRangeAsync().ConfigureAwait(false);
         if (speedRange is { IncrementKmh: > 0 } range)
         {
