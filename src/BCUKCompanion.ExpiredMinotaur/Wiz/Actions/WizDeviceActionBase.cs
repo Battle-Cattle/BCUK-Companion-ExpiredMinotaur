@@ -66,6 +66,16 @@ public abstract class WizDeviceActionBase : IEventAction
         return errors;
     }
 
+    /// <summary>
+    /// Builds the "turn on and set one property" shape shared by every Wiz setPilot payload
+    /// that isn't a bare on/off (<see cref="WizSetBrightnessAction"/>,
+    /// <see cref="WizSetColorTemperatureAction"/>, <see cref="WizSetColorAction"/> pass their
+    /// own single property in; <see cref="WizSetColorAction"/> needs three, so it builds its
+    /// own instead).
+    /// </summary>
+    protected static object StatePayload(string propertyKey, object propertyValue)
+        => new Dictionary<string, object> { ["state"] = true, [propertyKey] = propertyValue };
+
     protected virtual async Task<bool> SendAsync(WizClient client, WizDevice device, CancellationToken cancellationToken)
     {
         var payload = await BuildPayloadAsync(client, device, cancellationToken).ConfigureAwait(false);

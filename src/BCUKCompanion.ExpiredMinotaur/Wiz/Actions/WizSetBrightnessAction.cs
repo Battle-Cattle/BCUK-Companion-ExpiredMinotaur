@@ -24,5 +24,5 @@ public sealed class WizSetBrightnessAction : WizDeviceActionBase
             Brightness, MinBrightness, MaxBrightness,
             $"Brightness must be between {MinBrightness} and {MaxBrightness}."));
 
-    protected override object BuildPayload() => new { state = true, dimming = Brightness };
+    protected override object BuildPayload() => StatePayload("dimming", Brightness);
 }
