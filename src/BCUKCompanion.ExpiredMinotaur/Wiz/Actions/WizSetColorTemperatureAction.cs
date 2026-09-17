@@ -24,5 +24,5 @@ public sealed class WizSetColorTemperatureAction : WizDeviceActionBase
             ColorTemperatureKelvin, MinColorTemperatureKelvin, MaxColorTemperatureKelvin,
             $"Color temperature must be between {MinColorTemperatureKelvin}K and {MaxColorTemperatureKelvin}K."));
 
-    protected override object BuildPayload() => new { state = true, temp = ColorTemperatureKelvin };
+    protected override object BuildPayload() => StatePayload("temp", ColorTemperatureKelvin);
 }
