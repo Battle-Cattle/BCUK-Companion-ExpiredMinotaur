@@ -115,7 +115,7 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
     protected override ActionsConfig BuildConfig() => new() { Devices = devices.ToList(), Mappings = Mappings.ToList() };
 
     protected override IEventActionContext BuildContext() =>
-        new ActionsContext(new WizActionContext(wizClient, devices), new TreadmillActionContext(treadmillClient));
+        new CompositeEventActionContext(new WizActionContext(wizClient, devices), new TreadmillActionContext(treadmillClient));
 
     protected override IEventAction? ShowAddActionDialog()
     {

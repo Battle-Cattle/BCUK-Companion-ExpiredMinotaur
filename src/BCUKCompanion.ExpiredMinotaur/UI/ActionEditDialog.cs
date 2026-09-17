@@ -97,7 +97,7 @@ public sealed class ActionEditDialog : Window
         // passed in so Validate() sees accurate state if that ever matters.
         wizContext = new WizActionContext(new WizClient(), devices);
         treadmillContext = new TreadmillActionContext(treadmillClient);
-        validationContext = new ActionsContext(wizContext, treadmillContext);
+        validationContext = new CompositeEventActionContext(wizContext, treadmillContext);
 
         Title = existing is null ? "Add Action" : "Edit Action";
         Width = 380;
