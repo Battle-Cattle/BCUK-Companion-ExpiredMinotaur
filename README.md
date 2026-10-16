@@ -17,6 +17,30 @@ published to the org's GitHub Packages feed.
   feed alongside nuget.org.
 - `.github/workflows/dotnet.yml` — restores and builds on `windows-latest`
   (the WPF/WinForms dependencies only build on Windows).
+- `.github/workflows/release.yml` — publishes a downloadable Windows build
+  to a GitHub Release when a `v*` tag is pushed.
+
+## Download
+
+Grab the latest `BCUKCompanion.ExpiredMinotaur-vX.Y.Z-win-x64.zip` from the
+[Releases page](https://github.com/Battle-Cattle/BCUK-Companion-ExpiredMinotaur/releases/latest),
+extract it anywhere, and run `BCUKCompanion.ExpiredMinotaur.exe`. The build
+is self-contained, so no .NET runtime install is needed (Windows 10 1809 or
+later, x64).
+
+## Releasing
+
+Push a version tag and the `Release` workflow builds, zips, and attaches
+the app to a new GitHub Release (with auto-generated notes):
+
+```powershell
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+You can also run the workflow manually from the Actions tab and enter a
+tag. Tags with a suffix (e.g. `v1.1.0-beta.1`) are marked as pre-releases.
+The tag's number is stamped into the app's assembly version.
 
 ## Building
 

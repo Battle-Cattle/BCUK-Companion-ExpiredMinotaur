@@ -1,0 +1,76 @@
+name: Release
+
+# Publishes a downloadable Windows build to a GitHub Release.
+# Trigger by pushing a version tag, e.g.:
+#   git tag v1.0.0 && git push origin v1.0.0
+# or run manually from the Actions tab with a tag name.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create (e.g. v1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish (Windows x64)
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      PROJECT: src/BCUKCompanion.ExpiredMinotaur/BCUKCompanion.ExpiredMinotaur.csproj
+      APP_NAME: BCUKCompanion.ExpiredMinotaur
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Compute version
+        shell: pwsh
+        run: |
+          if ($env:TAG -notmatch '^v\d+\.\d+\.\d+([-+].*)?$') {
+            throw "Tag '$env:TAG' must look like v1.2.3 (optionally with a -prerelease suffix)."
+          }
+          $version = $env:TAG.Substring(1)
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Restore
+        run: dotnet restore ${{ env.PROJECT }} --runtime win-x64
+        env:
+          GITHUB_USERNAME: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.PACKAGES_READ_PAT }}
+
+      # Self-contained so end users don't need the .NET runtime installed.
+      - name: Publish
+        run: >
+          dotnet publish ${{ env.PROJECT }}
+          --no-restore
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          --output publish
+          -p:Version=${{ env.VERSION }}
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $zip = "$env:APP_NAME-$env:TAG-win-x64.zip"
+          Compress-Archive -Path publish/* -DestinationPath $zip
+          "ZIP=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ghArgs = @($env:TAG, $env:ZIP, '--repo', $env:GITHUB_REPOSITORY, '--title', $env:TAG, '--generate-notes', '--target', $env:GITHUB_SHA)
+          if ($env:VERSION -match '-') { $ghArgs += '--prerelease' }
+          gh release create @ghArgs
