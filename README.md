@@ -38,8 +38,9 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-You can also run the workflow manually from the Actions tab and enter a
-tag. Tags with a suffix (e.g. `v1.1.0-beta.1`) are marked as pre-releases.
+You can also run the workflow manually from the Actions tab with an
+already-pushed tag (e.g. to retry a failed run) — it builds that tag, not
+the branch the run was started from. Tags with a suffix (e.g. `v1.1.0-beta.1`) are marked as pre-releases.
 The tag's number is stamped into the app's assembly version.
 
 ## Building
