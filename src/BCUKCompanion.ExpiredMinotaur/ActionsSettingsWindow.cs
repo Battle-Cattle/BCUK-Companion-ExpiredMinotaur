@@ -5,7 +5,7 @@ using System.Windows.Threading;
 using BCUKCompanion.Core;
 using BCUKCompanion.Core.Actions;
 using BCUKCompanion.ExpiredMinotaur.Treadmill;
-using BCUKCompanion.ExpiredMinotaur.UI;
+using BCUKCompanion.ExpiredMinotaur.Treadmill.UI;
 using BCUKCompanion.ExpiredMinotaur.Wiz;
 using BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 using BCUKCompanion.ExpiredMinotaur.Wiz.UI;
@@ -89,10 +89,7 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
         tabs.Items.Add(new TabItem { Header = "Devices", Content = BuildDevicesTab() });
         tabs.Items.Add(new TabItem { Header = "Event Mappings", Content = BuildMappingsTab() });
 
-        var bottomPanel = new DockPanel { Margin = new Thickness(12, 8, 12, 12) };
-        DockPanel.SetDock(SaveButton, Dock.Right);
-        bottomPanel.Children.Add(SaveButton);
-        bottomPanel.Children.Add(StatusText);
+        var bottomPanel = BuildFooter();
 
         var root = new DockPanel();
         DockPanel.SetDock(topPanel, Dock.Top);
@@ -117,17 +114,9 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
     protected override IEventActionContext BuildContext() =>
         new CompositeEventActionContext(new WizActionContext(wizClient, devices), new TreadmillActionContext(treadmillClient));
 
-    protected override IEventAction? ShowAddActionDialog()
-    {
-        var dialog = new ActionEditDialog(devices, treadmillClient) { Owner = this };
-        return dialog.ShowDialog() == true ? dialog.Result : null;
-    }
-
-    protected override IEventAction? ShowEditActionDialog(IEventAction existing)
-    {
-        var dialog = new ActionEditDialog(devices, treadmillClient, existing) { Owner = this };
-        return dialog.ShowDialog() == true ? dialog.Result : null;
-    }
+    // The shell's Add/Edit Action dialog offers these categories, then its built-in Delay.
+    protected override IEnumerable<EventActionEditor> CreateActionEditors() =>
+        [new WizActionEditor(devices), new TreadmillActionEditor()];
 
     private UIElement BuildDevicesTab()
     {
@@ -198,9 +187,10 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
             devices[index] = updated;
 
             var context = BuildContext();
-            var removedActionCount = StripMatchingActions(
+            var removedActionCount = RemoveActions(
                 a => a is WizDeviceActionBase d && d.DeviceId == updated.Id && d.Validate(context).Count > 0);
 
+            // Even with nothing removed: the actions' descriptions include the device's name.
             RefreshActionsList();
             StatusText.Text = removedActionCount > 0
                 ? $"Updated device and removed {removedActionCount} action(s) no longer valid for it."
@@ -218,10 +208,9 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
 
         devices.Remove(selected);
 
-        var removedActionCount = StripMatchingActions(
+        var removedActionCount = RemoveActions(
             a => a is WizDeviceActionBase d && d.DeviceId == selected.Id);
 
-        RefreshActionsList();
         StatusText.Text = removedActionCount > 0
             ? $"Removed device and {removedActionCount} action(s) that referenced it."
             : "Removed device.";
@@ -239,21 +228,11 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
         }
     }
 
-    private int StripMatchingActions(Func<IEventAction, bool> shouldRemove)
-    {
-        var removedCount = 0;
-        foreach (var mapping in Mappings.ToList())
-        {
-            var remaining = mapping.Actions.Where(a => !shouldRemove(a)).ToList();
-            removedCount += mapping.Actions.Count - remaining.Count;
-            if (remaining.Count != mapping.Actions.Count)
-                ReplaceMappingActions(mapping, remaining);
-        }
-        return removedCount;
-    }
-
+    // InvokeAsync, not Invoke: TreadmillClient raises StatusChanged while holding its write lock,
+    // and blocking that thread on the UI thread would deadlock if the UI thread ever waited on
+    // the same lock.
     private void OnTreadmillStatusChanged(object? sender, string message) =>
-        Dispatcher.Invoke(() => treadmillStatusText.Text = message);
+        _ = Dispatcher.InvokeAsync(() => treadmillStatusText.Text = message);
 
     private void RefreshTreadmillSpeedText()
     {

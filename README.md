@@ -2,7 +2,7 @@
 
 The companion app for the BCUK Bot, built for **ExpiredMinotaur**.
 
-This repo is a thin Windows tray application that consumes the shared
+This repo is a Windows tray application that consumes the shared
 [`BCUKCompanion.Core`](https://github.com/Battle-Cattle/BCUK-Companion-Core)
 NuGet packages (`BCUKCompanion.Core` and `BCUKCompanion.TrayApp.Shell`).
 It does not fork or vendor that repo's source — it depends on the packages
@@ -12,14 +12,19 @@ published to the org's GitHub Packages feed.
 
 - `src/BCUKCompanion.ExpiredMinotaur` — WinExe host project: `Program.cs`
   calls `CompanionTrayApplication.Run()` with a `DataFolderName` unique to
-  this app, plus `appsettings.json` for the default bot host.
+  this app, plus `appsettings.json` for the default bot host. The rest is
+  this app's own integrations: `Wiz/` (WiZ lights over the LAN) and
+  `Treadmill/` (an FTMS treadmill over Bluetooth LE), each with its action
+  kinds and an action editor for the shared Add/Edit Action dialog, and
+  `ActionsSettingsWindow`/`ActionsConfigStore` for the "Actions..." window
+  and its config file.
 - `NuGet.config` — adds the `https://nuget.pkg.github.com/Battle-Cattle/index.json`
   feed alongside nuget.org.
 - `.github/workflows/dotnet.yml` — restores and builds on `windows-latest`
   (the WPF/WinForms dependencies only build on Windows).
 - `.github/workflows/release.yml` — publishes a downloadable Windows build
   to a GitHub Release when `VERSION` changes on `main` (or a `v*` tag is
-  pushed).
+  pushed), by calling `BCUK-Companion-Core`'s shared `companion-release.yml`.
 - `VERSION` — the app version the next release on `main` publishes.
 
 ## Download
@@ -32,8 +37,9 @@ later, x64).
 
 ### Updates
 
-The app updates itself: on launch it checks the latest GitHub release and,
-if it's newer, downloads it, restarts, and carries on. A tray balloon shows
+The app updates itself (via the shared tray shell's updater): on launch it
+checks the latest GitHub release and, if it's newer, downloads it, verifies
+it against the release's checksum, restarts, and carries on. A tray balloon shows
 while this happens. You can also pick **Check for updates...** from the tray
 menu. Settings and login are stored under your user profile, not the app
 folder, so they survive updates. The app folder must be writable, so don't
@@ -44,7 +50,8 @@ update themselves.
 
 Bump the version in `VERSION` (e.g. `1.0.0` → `1.1.0`) and merge to `main`.
 The `Release` workflow then tags the merge commit `v1.1.0`, builds the app,
-zips it and attaches it to a new GitHub Release with auto-generated notes.
+zips it and attaches it (with a `.sha256` checksum) to a new GitHub Release
+with auto-generated notes.
 Installed copies pick it up on their next launch. Merging a `VERSION` that
 already has a release does nothing.
 

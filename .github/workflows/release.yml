@@ -1,6 +1,8 @@
 name: Release
 
-# Publishes a downloadable Windows build to a GitHub Release. Three ways to trigger it:
+# Publishes a downloadable Windows build to a GitHub Release, via BCUK-Companion-Core's shared
+# companion-release.yml (which also publishes the .sha256 checksum the in-app updater verifies).
+# Three ways to trigger it:
 # - Bump the version in VERSION and merge to main: tags v<VERSION> and releases it.
 # - Push a version tag, e.g. git tag v1.0.0 && git push origin v1.0.0
 # - Run manually from the Actions tab with an already-pushed tag (e.g. to retry a failed run).
@@ -17,100 +19,16 @@ on:
         required: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   release:
-    name: Publish (Windows x64)
-    runs-on: windows-latest
-    env:
-      PROJECT: src/BCUKCompanion.ExpiredMinotaur/BCUKCompanion.ExpiredMinotaur.csproj
-      APP_NAME: BCUKCompanion.ExpiredMinotaur
-      INPUT_TAG: ${{ inputs.tag }}
-    steps:
-      # On a manual run, build the requested tag itself rather than whatever branch the run
-      # was started from; checkout fails if the tag doesn't exist. Otherwise build the exact
-      # pushed commit (not the branch tip, which may have moved on).
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.sha }}
-          persist-credentials: false
-
-      # TAG comes from the manual input, the pushed tag, or (on a push to main) VERSION. A main
-      # push whose version already has a release does nothing, so unrelated VERSION edits (or
-      # re-runs) never publish twice. CREATE_TAG marks the one mode where the tag doesn't exist yet.
-      - name: Resolve version
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $createTag = 'false'
-          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
-            $tag = $env:INPUT_TAG
-          } elseif ($env:GITHUB_REF -like 'refs/tags/*') {
-            $tag = $env:GITHUB_REF_NAME
-          } else {
-            $tag = 'v' + (Get-Content VERSION -Raw).Trim()
-            $createTag = 'true'
-          }
-          if ($tag -notmatch '^v\d+\.\d+\.\d+([-+].*)?$') {
-            throw "Tag '$tag' must look like v1.2.3 (optionally with a -prerelease suffix)."
-          }
-          $skip = 'false'
-          if ($createTag -eq 'true') {
-            # "Not found" is an expected non-zero exit here, not a failure.
-            $PSNativeCommandUseErrorActionPreference = $false
-            gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
-            if ($LASTEXITCODE -eq 0) {
-              Write-Host "Release $tag already exists; nothing to do."
-              $skip = 'true'
-            }
-            $global:LASTEXITCODE = 0
-          }
-          "TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "VERSION=$($tag.Substring(1))" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "CREATE_TAG=$createTag" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "SKIP=$skip" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
-        if: env.SKIP != 'true'
-        with:
-          dotnet-version: "8.0.x"
-
-      # Self-contained so end users don't need the .NET runtime installed. Publish does its
-      # own restore so the runtime packs match the self-contained setting.
-      - name: Publish
-        if: env.SKIP != 'true'
-        shell: pwsh
-        env:
-          GITHUB_USERNAME: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.PACKAGES_READ_PAT }}
-        run: >
-          dotnet publish $env:PROJECT
-          --configuration Release
-          --runtime win-x64
-          --self-contained true
-          --output publish
-          "-p:Version=$env:VERSION"
-
-      - name: Package
-        if: env.SKIP != 'true'
-        shell: pwsh
-        run: |
-          $zip = "$env:APP_NAME-$env:TAG-win-x64.zip"
-          Compress-Archive -Path publish/* -DestinationPath $zip
-          "ZIP=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      # On a main push the tag is created here, on the exact commit that was built. Otherwise the
-      # tag must already exist (--verify-tag). Tags created with GITHUB_TOKEN don't re-trigger
-      # this workflow, so this never releases twice.
-      - name: Create GitHub Release
-        if: env.SKIP != 'true'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $ghArgs = @($env:TAG, $env:ZIP, '--repo', $env:GITHUB_REPOSITORY, '--title', $env:TAG, '--generate-notes')
-          if ($env:CREATE_TAG -eq 'true') { $ghArgs += @('--target', $env:GITHUB_SHA) } else { $ghArgs += '--verify-tag' }
-          if ($env:VERSION -match '-') { $ghArgs += '--prerelease' }
-          gh release create @ghArgs
+    uses: Battle-Cattle/BCUK-Companion-Core/.github/workflows/companion-release.yml@main
+    permissions:
+      contents: write
+    with:
+      project: src/BCUKCompanion.ExpiredMinotaur/BCUKCompanion.ExpiredMinotaur.csproj
+      app-name: BCUKCompanion.ExpiredMinotaur
+      tag: ${{ inputs.tag }}
+    secrets:
+      packages-read-pat: ${{ secrets.PACKAGES_READ_PAT }}

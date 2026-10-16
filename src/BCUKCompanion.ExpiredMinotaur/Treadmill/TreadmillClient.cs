@@ -179,7 +179,13 @@ public sealed class TreadmillClient : IDisposable
     private async Task<bool> ScanConnectAndConfigureAsync(CancellationToken cancellationToken)
     {
         RaiseStatus("Scanning...");
-        var address = await FtmsDevice.FindFitnessMachineAddressAsync(ScanTimeout).ConfigureAwait(false);
+        var address = await FtmsDevice.FindFitnessMachineAddressAsync(ScanTimeout, cancellationToken).ConfigureAwait(false);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            RaiseStatus("Connect cancelled.");
+            return false;
+        }
+
         if (address is null)
         {
             RaiseStatus("No fitness machine found. Is it powered on and in range?");

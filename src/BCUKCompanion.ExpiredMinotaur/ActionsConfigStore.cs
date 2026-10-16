@@ -29,14 +29,11 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
         public List<EventActionMapping> Mappings { get; init; } = [];
     }
 
-    // Hides the base Load() (not virtual) so that, in addition to the base class's
-    // whole-file corruption handling, individual devices with an unparsable IpAddress
-    // (e.g. from a hand-edited actions-config.json) are dropped rather than flowing through
-    // to runtime code such as WizClient, which needs a valid IP to operate on.
-    public new ActionsConfig Load()
+    // In addition to the base class's whole-file corruption handling, individual devices with
+    // an unparsable IpAddress (e.g. from a hand-edited actions-config.json) are dropped rather
+    // than flowing through to runtime code such as WizClient, which needs a valid IP to operate on.
+    protected override ActionsConfig OnLoaded(ActionsConfig config)
     {
-        var config = File.Exists(ConfigFilePath) ? base.Load() : TryMigrateLegacyConfig();
-
         List<WizDevice>? validDevices = null;
         for (var i = 0; i < config.Devices.Count; i++)
         {
@@ -57,14 +54,15 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
         return validDevices is null ? config : config with { Devices = validDevices };
     }
 
-    // A pre-consolidation install stored Wiz devices/mappings in wiz-config.json and Treadmill
-    // mappings in treadmill-config.json (see git history of this file for their shapes). If
-    // neither exists this is a fresh install and base.Load() (returning a new ActionsConfig)
-    // covers it; otherwise combine what's there into one ActionsConfig and persist it so this
-    // migration runs at most once. The legacy files are left in place rather than deleted -
-    // they're inert once actions-config.json exists, and keeping them is a safer failure mode
-    // than deleting a user's only copy of their old settings if this migration has a bug.
-    private ActionsConfig TryMigrateLegacyConfig()
+    // Runs only while actions-config.json doesn't exist. A pre-consolidation install stored Wiz
+    // devices/mappings in wiz-config.json and Treadmill mappings in treadmill-config.json (see
+    // git history of this file for their shapes). If neither exists this is a fresh install and
+    // gets a new ActionsConfig; otherwise combine what's there into one ActionsConfig and persist
+    // it so this migration runs at most once. The legacy files are left in place rather than
+    // deleted - they're inert once actions-config.json exists, and keeping them is a safer
+    // failure mode than deleting a user's only copy of their old settings if this migration has
+    // a bug.
+    protected override ActionsConfig CreateWhenMissing()
     {
         var directory = Path.GetDirectoryName(ConfigFilePath)!;
         var wizPath = Path.Combine(directory, "wiz-config.json");
@@ -72,7 +70,7 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
 
         if (!File.Exists(wizPath) && !File.Exists(treadmillPath))
         {
-            return base.Load();
+            return new ActionsConfig();
         }
 
         var options = new JsonSerializerOptions { Converters = { new EventActionJsonConverter(registry) } };
@@ -105,7 +103,8 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
         // Only persist (and so stop re-attempting migration on every Load()) once every
         // existing legacy file was read successfully - saving a partial result here would
         // make actions-config.json exist from then on, and Load() only migrates when it's
-        // still missing, permanently losing whatever the failed file held.
+        // still missing, permanently losing whatever the failed file held. Save() re-enters
+        // the lock Load() holds while calling this, which is safe (it's a Monitor).
         if (migratedEverything)
         {
             Save(migrated);
