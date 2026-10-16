@@ -10,6 +10,11 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>BCUKCompanion.ExpiredMinotaur</RootNamespace>
     <AssemblyName>BCUKCompanion.ExpiredMinotaur</AssemblyName>
+    <!--
+      Placeholder for local builds; the release workflow stamps the real version from the tag
+      (-p:Version=1.2.3). The in-app updater treats 0.0.0 as a dev build and never self-updates it.
+    -->
+    <Version>0.0.0</Version>
   </PropertyGroup>
 
   <!--

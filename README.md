@@ -28,6 +28,16 @@ extract it anywhere, and run `BCUKCompanion.ExpiredMinotaur.exe`. The build
 is self-contained, so no .NET runtime install is needed (Windows 10 1809 or
 later, x64).
 
+### Updates
+
+The app updates itself: on launch it checks the latest GitHub release and,
+if it's newer, downloads it, restarts, and carries on. A tray balloon shows
+while this happens. You can also pick **Check for updates...** from the tray
+menu. Settings and login are stored under your user profile, not the app
+folder, so they survive updates. The app folder must be writable, so don't
+extract it under `Program Files`. Local builds (version `0.0.0`) never
+update themselves.
+
 ## Releasing
 
 Push a version tag and the `Release` workflow builds, zips, and attaches
