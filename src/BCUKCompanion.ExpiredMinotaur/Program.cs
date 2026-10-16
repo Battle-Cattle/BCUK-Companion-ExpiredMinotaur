@@ -12,6 +12,10 @@ internal static class Program
 {
     internal const string DataFolderName = "BCUKCompanion.ExpiredMinotaur";
 
+    /// <summary>
+    /// Registers this app's actions (WiZ lights, treadmill) and runs the shared companion tray app,
+    /// dispatching bot events — reward redemptions and advanced commands — to the mapped actions.
+    /// </summary>
     [STAThread]
     private static void Main()
     {
@@ -33,7 +37,7 @@ internal static class Program
         // always see the current instance, even one created after the window itself.
         CompanionClient? companionClient = null;
 
-        // Set via OnTrayIconReady once, at startup. Lets OnBotEvent surface dispatch
+        // Set via OnTrayIconReady once, at startup. Lets OnBotEventAsync surface dispatch
         // failures (crashes and completed-but-failed actions alike) as tray balloons,
         // since Debug.WriteLine alone is compiled out of a Release build.
         Action<string, string>? showBalloon = null;
@@ -43,7 +47,9 @@ internal static class Program
             DataFolderName = DataFolderName,
             OnClientReady = client => companionClient = client,
             OnTrayIconReady = balloon => showBalloon = balloon,
-            OnBotEvent = e =>
+            // Awaited by the shell, which acknowledges advanced commands to the bot from the
+            // result: anything short of every mapped action succeeding refunds the viewer.
+            OnBotEventAsync = async e =>
             {
                 var config = store.Load();
                 var dispatcher = new EventActionDispatcher(
@@ -51,7 +57,17 @@ internal static class Program
                     () => new CompositeEventActionContext(
                         new WizActionContext(client, config.Devices),
                         new TreadmillActionContext(treadmillClient)));
-                dispatcher.DispatchAndReportAsync(e, showBalloon);
+                try
+                {
+                    var result = await Task.Run(() => dispatcher.DispatchAsync(e)).ConfigureAwait(true);
+                    ReportFailedActions(result, showBalloon);
+                    return result;
+                }
+                catch (Exception ex)
+                {
+                    showBalloon?.Invoke("Action dispatch crashed", ex.Message);
+                    throw;
+                }
             },
             AdditionalMenuItems = new[]
             {
@@ -61,5 +77,20 @@ internal static class Program
         });
 
         treadmillClient.Dispose();
+    }
+
+    /// <summary>
+    /// Surfaces actions that ran but failed (a wrong device IP, an offline light, a disconnected
+    /// treadmill, ...) as a tray balloon, since Debug output is compiled out of a Release build.
+    /// </summary>
+    private static void ReportFailedActions(EventDispatchResult? result, Action<string, string>? showBalloon)
+    {
+        if (result is null || result.ActionResults.Count == 0 || result.AllSucceeded)
+        {
+            return;
+        }
+
+        var detail = string.Join("; ", result.ActionResults.Where(r => !r.Success).Select(r => r.ErrorMessage ?? "Action failed."));
+        showBalloon?.Invoke("Action failed", detail);
     }
 }
