@@ -1,5 +1,6 @@
 using BCUKCompanion.Core;
 using BCUKCompanion.Core.Actions;
+using BCUKCompanion.Core.Models;
 using BCUKCompanion.ExpiredMinotaur.Treadmill;
 using BCUKCompanion.ExpiredMinotaur.Treadmill.Actions;
 using BCUKCompanion.ExpiredMinotaur.Updates;
@@ -38,12 +39,35 @@ internal static class Program
         // always see the current instance, even one created after the window itself.
         CompanionClient? companionClient = null;
 
-        // Set via OnTrayIconReady once, at startup. Lets OnBotEventAsync surface dispatch
+        // Set via OnTrayIconReady once, at startup. Lets dispatchAsync surface dispatch
         // failures (crashes and completed-but-failed actions alike) as tray balloons,
         // since Debug.WriteLine alone is compiled out of a Release build.
         Action<string, string>? showBalloon = null;
 
         var updater = new AppUpdater();
+
+        // Runs the actions mapped to a redemption or advanced command, reporting failures as
+        // balloons. Returns the result so the shell can acknowledge advanced commands from it.
+        Func<BotEventArgs, Task<EventDispatchResult?>> dispatchAsync = async e =>
+        {
+            var config = store.Load();
+            var dispatcher = new EventActionDispatcher(
+                () => config.Mappings,
+                () => new CompositeEventActionContext(
+                    new WizActionContext(client, config.Devices),
+                    new TreadmillActionContext(treadmillClient)));
+            try
+            {
+                var result = await Task.Run(() => dispatcher.DispatchAsync(e)).ConfigureAwait(true);
+                ReportFailedActions(result, showBalloon);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                showBalloon?.Invoke("Action dispatch crashed", ex.Message);
+                throw;
+            }
+        };
 
         CompanionTrayApplication.Run(new CompanionTrayAppOptions
         {
@@ -55,28 +79,21 @@ internal static class Program
                 // Installs any newer GitHub release in the background, restarting the app.
                 updater.CheckOnLaunch(balloon);
             },
-            // Awaited by the shell, which acknowledges advanced commands to the bot from the
-            // result: anything short of every mapped action succeeding refunds the viewer.
-            OnBotEventAsync = async e =>
+            // Shell 0.7.0 only awaits OnBotEventAsync for advanced commands; channel-point
+            // redemptions reach the host through OnBotEvent alone, so they're dispatched here
+            // (fire-and-forget, failures still balloon). Commands also pass through OnBotEvent,
+            // so filter to redemptions to avoid running a command's actions twice. If a later
+            // Shell starts awaiting OnBotEventAsync for redemptions too, drop this.
+            OnBotEvent = e =>
             {
-                var config = store.Load();
-                var dispatcher = new EventActionDispatcher(
-                    () => config.Mappings,
-                    () => new CompositeEventActionContext(
-                        new WizActionContext(client, config.Devices),
-                        new TreadmillActionContext(treadmillClient)));
-                try
+                if (e.EventName == EventActionDispatcher.RedemptionEventName)
                 {
-                    var result = await Task.Run(() => dispatcher.DispatchAsync(e)).ConfigureAwait(true);
-                    ReportFailedActions(result, showBalloon);
-                    return result;
-                }
-                catch (Exception ex)
-                {
-                    showBalloon?.Invoke("Action dispatch crashed", ex.Message);
-                    throw;
+                    _ = dispatchAsync(e);
                 }
             },
+            // Awaited by the shell, which acknowledges advanced commands to the bot from the
+            // result: anything short of every mapped action succeeding refunds the viewer.
+            OnBotEventAsync = dispatchAsync,
             AdditionalMenuItems = new[]
             {
                 SingletonWindowMenuItem.Create("Actions...",
