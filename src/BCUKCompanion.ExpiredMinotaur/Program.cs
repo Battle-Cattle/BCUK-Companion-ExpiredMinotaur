@@ -12,6 +12,10 @@ internal static class Program
 {
     internal const string DataFolderName = "BCUKCompanion.ExpiredMinotaur";
 
+    /// <summary>
+    /// Registers this app's actions (WiZ lights, treadmill) and runs the shared companion tray app,
+    /// dispatching bot events — reward redemptions and advanced commands — to the mapped actions.
+    /// </summary>
     [STAThread]
     private static void Main()
     {
