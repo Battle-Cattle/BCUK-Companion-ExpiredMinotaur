@@ -43,21 +43,23 @@ jobs:
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Restore
-        run: dotnet restore ${{ env.PROJECT }} --runtime win-x64
+        shell: pwsh
+        run: dotnet restore $env:PROJECT --runtime win-x64
         env:
           GITHUB_USERNAME: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.PACKAGES_READ_PAT }}
 
       # Self-contained so end users don't need the .NET runtime installed.
       - name: Publish
+        shell: pwsh
         run: >
-          dotnet publish ${{ env.PROJECT }}
+          dotnet publish $env:PROJECT
           --no-restore
           --configuration Release
           --runtime win-x64
           --self-contained true
           --output publish
-          -p:Version=${{ env.VERSION }}
+          "-p:Version=$env:VERSION"
 
       - name: Package
         shell: pwsh
