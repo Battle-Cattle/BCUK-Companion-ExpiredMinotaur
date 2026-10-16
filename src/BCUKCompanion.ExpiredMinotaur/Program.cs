@@ -2,6 +2,7 @@ using BCUKCompanion.Core;
 using BCUKCompanion.Core.Actions;
 using BCUKCompanion.ExpiredMinotaur.Treadmill;
 using BCUKCompanion.ExpiredMinotaur.Treadmill.Actions;
+using BCUKCompanion.ExpiredMinotaur.Updates;
 using BCUKCompanion.ExpiredMinotaur.Wiz;
 using BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 using BCUKCompanion.TrayApp;
@@ -42,11 +43,18 @@ internal static class Program
         // since Debug.WriteLine alone is compiled out of a Release build.
         Action<string, string>? showBalloon = null;
 
+        var updater = new AppUpdater();
+
         CompanionTrayApplication.Run(new CompanionTrayAppOptions
         {
             DataFolderName = DataFolderName,
             OnClientReady = client => companionClient = client,
-            OnTrayIconReady = balloon => showBalloon = balloon,
+            OnTrayIconReady = balloon =>
+            {
+                showBalloon = balloon;
+                // Installs any newer GitHub release in the background, restarting the app.
+                updater.CheckOnLaunch(balloon);
+            },
             // Awaited by the shell, which acknowledges advanced commands to the bot from the
             // result: anything short of every mapped action succeeding refunds the viewer.
             OnBotEventAsync = async e =>
@@ -73,6 +81,7 @@ internal static class Program
             {
                 SingletonWindowMenuItem.Create("Actions...",
                     () => new ActionsSettingsWindow(store, client, treadmillClient, () => companionClient)),
+                updater.CreateMenuItem(),
             },
         });
 

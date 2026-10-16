@@ -18,7 +18,9 @@ published to the org's GitHub Packages feed.
 - `.github/workflows/dotnet.yml` — restores and builds on `windows-latest`
   (the WPF/WinForms dependencies only build on Windows).
 - `.github/workflows/release.yml` — publishes a downloadable Windows build
-  to a GitHub Release when a `v*` tag is pushed.
+  to a GitHub Release when `VERSION` changes on `main` (or a `v*` tag is
+  pushed).
+- `VERSION` — the app version the next release on `main` publishes.
 
 ## Download
 
@@ -28,20 +30,30 @@ extract it anywhere, and run `BCUKCompanion.ExpiredMinotaur.exe`. The build
 is self-contained, so no .NET runtime install is needed (Windows 10 1809 or
 later, x64).
 
+### Updates
+
+The app updates itself: on launch it checks the latest GitHub release and,
+if it's newer, downloads it, restarts, and carries on. A tray balloon shows
+while this happens. You can also pick **Check for updates...** from the tray
+menu. Settings and login are stored under your user profile, not the app
+folder, so they survive updates. The app folder must be writable, so don't
+extract it under `Program Files`. Local builds (version `0.0.0`) never
+update themselves.
+
 ## Releasing
 
-Push a version tag and the `Release` workflow builds, zips, and attaches
-the app to a new GitHub Release (with auto-generated notes):
+Bump the version in `VERSION` (e.g. `1.0.0` → `1.1.0`) and merge to `main`.
+The `Release` workflow then tags the merge commit `v1.1.0`, builds the app,
+zips it and attaches it to a new GitHub Release with auto-generated notes.
+Installed copies pick it up on their next launch. Merging a `VERSION` that
+already has a release does nothing.
 
-```powershell
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-You can also run the workflow manually from the Actions tab with an
-already-pushed tag (e.g. to retry a failed run) — it builds that tag, not
-the branch the run was started from. Tags with a suffix (e.g. `v1.1.0-beta.1`) are marked as pre-releases.
-The tag's number is stamped into the app's assembly version.
+You can also push a tag yourself (`git tag v1.1.0 && git push origin v1.1.0`),
+or run the workflow manually from the Actions tab with an already-pushed tag
+(e.g. to retry a failed run). A manual run builds that tag, not the branch
+the run was started from. Versions with a suffix (e.g. `1.1.0-beta.1`) are
+marked as pre-releases, and the in-app updater skips them. The version is
+stamped into the app's assembly version.
 
 ## Building
 
