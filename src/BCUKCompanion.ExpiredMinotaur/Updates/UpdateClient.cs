@@ -3,6 +3,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -35,6 +36,14 @@ public sealed class UpdateClient
 
     public static bool IsReleaseBuild => CurrentVersion > new Version(0, 0, 0);
 
+    /// <summary>
+    /// True for a pre-release build such as v1.1.0-beta.1. Its assembly version is just 1.1.0, so
+    /// the suffix is read from the informational version (the full -p:Version, minus any +commit).
+    /// </summary>
+    public static bool IsPrereleaseBuild { get; } = typeof(UpdateClient).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        .Split('+')[0].Contains('-') == true;
+
     // Declared after CurrentVersion: static initializers run in textual order and this one reads it.
     private static readonly HttpClient Http = CreateHttpClient();
 
@@ -54,7 +63,7 @@ public sealed class UpdateClient
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         var release = await JsonSerializer.DeserializeAsync<GitHubRelease>(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
-        if (release?.TagName is null || !TryParseTag(release.TagName, out var version) || version <= CurrentVersion)
+        if (release?.TagName is null || !TryParseTag(release.TagName, out var version) || !IsNewer(version))
         {
             return null;
         }
@@ -67,6 +76,11 @@ public sealed class UpdateClient
 
         return new AvailableUpdate(version, release.TagName, new Uri(asset.BrowserDownloadUrl), new Uri(release.HtmlUrl ?? $"https://github.com/{RepoOwner}/{RepoName}/releases"));
     }
+
+    // A pre-release build counts as older than the stable release of the same number, so someone
+    // on v1.1.0-beta.1 is offered v1.1.0. (releases/latest never returns a pre-release.)
+    private static bool IsNewer(Version version) =>
+        version > CurrentVersion || (version == CurrentVersion && IsPrereleaseBuild);
 
     /// <summary>
     /// Downloads and extracts <paramref name="update"/>, then starts the script that swaps it in
@@ -124,10 +138,12 @@ public sealed class UpdateClient
         Process.Start(startInfo)?.Dispose();
     }
 
-    // Waits for the app to exit (releasing its file locks and single-instance mutex), copies the
-    // new build over the old one with a few retries in case antivirus briefly holds a file, then
-    // relaunches. Files the new build no longer ships are left in place rather than mirroring,
-    // so nothing a user dropped into the folder gets deleted.
+    // Waits for the app to exit (releasing its file locks and single-instance mutex), backs up the
+    // install folder, then copies the new build over it, retrying in case antivirus briefly holds
+    // a file. If anything fails part-way, the backup is copied back so the previous version still
+    // starts, and the work folder (with the backup) is kept for manual recovery. If the app never
+    // exits, nothing is touched. Files the new build no longer ships are left in place rather than
+    // mirroring, so nothing a user dropped into the folder gets deleted.
     private const string ApplyUpdateScript = """
         param(
             [int]$ProcessId,
@@ -137,18 +153,39 @@ public sealed class UpdateClient
             [string]$WorkDir
         )
         $ErrorActionPreference = 'Stop'
-        try { Wait-Process -Id $ProcessId -Timeout 60 } catch { }
-        for ($attempt = 1; $attempt -le 10; $attempt++) {
-            try {
-                Copy-Item -Path (Join-Path $Source '*') -Destination $Target -Recurse -Force
-                break
-            } catch {
-                if ($attempt -eq 10) { throw }
-                Start-Sleep -Seconds 1
+
+        function Copy-Tree([string]$From, [string]$To) {
+            for ($attempt = 1; $attempt -le 10; $attempt++) {
+                try {
+                    Copy-Item -Path (Join-Path $From '*') -Destination $To -Recurse -Force
+                    return
+                } catch {
+                    if ($attempt -eq 10) { throw }
+                    Start-Sleep -Seconds 1
+                }
             }
         }
+
+        try { Wait-Process -Id $ProcessId -Timeout 60 } catch { }
+        if (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue) {
+            exit 1
+        }
+
+        $backup = Join-Path $WorkDir 'backup'
+        $updated = $false
+        try {
+            New-Item -ItemType Directory -Path $backup -Force | Out-Null
+            Copy-Tree $Target $backup
+            Copy-Tree $Source $Target
+            $updated = $true
+        } catch {
+            try { Copy-Tree $backup $Target } catch { }
+        }
+
         Start-Process -FilePath $Exe -WorkingDirectory $Target
-        Remove-Item -Path $WorkDir -Recurse -Force -ErrorAction SilentlyContinue
+        if ($updated) {
+            Remove-Item -Path $WorkDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
         """;
 
     private static void EnsureWritable(string directory)
