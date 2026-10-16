@@ -54,63 +54,68 @@ public sealed class AppUpdater
 
         try
         {
-            if (!UpdateClient.IsReleaseBuild)
+            var update = await FindUpdateAsync(interactive);
+            if (update is not null && (!interactive || ConfirmInstall(update)))
             {
-                if (interactive)
-                {
-                    MessageBox.Show("This is a development build, so it doesn't update itself. Download releases from GitHub instead.", Caption);
-                }
-                return;
+                await InstallAsync(update, interactive);
             }
-
-            AvailableUpdate? update;
-            try
-            {
-                update = await client.CheckForUpdateAsync();
-            }
-            catch (Exception ex)
-            {
-                // Offline at launch is normal — only report failures the user asked about.
-                if (interactive)
-                {
-                    MessageBox.Show($"Couldn't check for updates:\n{ex.Message}", Caption, MessageBoxButton.OK, MessageBoxImage.Warning);
-                }
-                return;
-            }
-
-            if (update is null)
-            {
-                if (interactive)
-                {
-                    MessageBox.Show($"You're on the latest version (v{UpdateClient.CurrentVersion}).", Caption);
-                }
-                return;
-            }
-
-            if (interactive && MessageBox.Show(
-                    $"Version {update.Version} is available (you have {UpdateClient.CurrentVersion}).\n\nInstall it now? The app will restart.",
-                    Caption, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
-            {
-                return;
-            }
-
-            showBalloon?.Invoke("Updating BCUK Companion", $"Downloading v{update.Version}. The app will restart when it's ready.");
-            try
-            {
-                await client.PrepareAndLaunchInstallerAsync(update);
-            }
-            catch (Exception ex)
-            {
-                ReportInstallFailure(update, ex, interactive);
-                return;
-            }
-
-            Application.Current.Shutdown();
         }
         finally
         {
             Interlocked.Exchange(ref busy, 0);
         }
+    }
+
+    /// <summary>
+    /// Returns the update to install, or <c>null</c> after telling an interactive user why not.
+    /// The launch check stays silent: being offline at launch is normal.
+    /// </summary>
+    private async Task<AvailableUpdate?> FindUpdateAsync(bool interactive)
+    {
+        AvailableUpdate? update = null;
+        string? message;
+        if (!UpdateClient.IsReleaseBuild)
+        {
+            message = "This is a development build, so it doesn't update itself. Download releases from GitHub instead.";
+        }
+        else
+        {
+            try
+            {
+                update = await client.CheckForUpdateAsync();
+                message = update is null ? $"You're on the latest version (v{UpdateClient.CurrentVersion})." : null;
+            }
+            catch (Exception ex)
+            {
+                message = $"Couldn't check for updates:\n{ex.Message}";
+            }
+        }
+
+        if (interactive && message is not null)
+        {
+            MessageBox.Show(message, Caption);
+        }
+        return update;
+    }
+
+    private static bool ConfirmInstall(AvailableUpdate update) => MessageBox.Show(
+        $"Version {update.Version} is available (you have {UpdateClient.CurrentVersion}).\n\nInstall it now? The app will restart.",
+        Caption, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+
+    private async Task InstallAsync(AvailableUpdate update, bool interactive)
+    {
+        showBalloon?.Invoke("Updating BCUK Companion", $"Downloading v{update.Version}. The app will restart when it's ready.");
+        try
+        {
+            await client.PrepareAndLaunchInstallerAsync(update);
+        }
+        catch (Exception ex)
+        {
+            ReportInstallFailure(update, ex, interactive);
+            return;
+        }
+
+        Application.Current.Shutdown();
     }
 
     private void ReportInstallFailure(AvailableUpdate update, Exception ex, bool interactive)
