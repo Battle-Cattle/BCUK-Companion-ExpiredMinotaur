@@ -10,6 +10,11 @@ namespace BCUKCompanion.ExpiredMinotaur;
 public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeRegistry registry)
     : EventActionConfigStore<ActionsConfig>(dataFolderName, "actions-config.json", registry)
 {
+    // Copied into an explicit field (rather than referencing the primary constructor parameter
+    // from a method) so the parameter isn't captured as well as passed to the base constructor
+    // (CS9107).
+    private readonly EventActionTypeRegistry registry = registry;
+
     // Shapes of the two per-integration config files this replaced (wiz-config.json,
     // treadmill-config.json), kept only so a pre-consolidation install's devices and mappings
     // can be migrated into actions-config.json instead of silently disappearing.
