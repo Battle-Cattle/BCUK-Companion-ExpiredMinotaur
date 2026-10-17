@@ -64,7 +64,7 @@ stamped into the app's assembly version.
 
 ## Building
 
-Requires the .NET 8 SDK with the Windows desktop workload (Windows only —
+Requires the .NET 10 SDK with the Windows desktop workload (Windows only —
 see `BCUK-Companion-Core`'s `CLAUDE.md` for why this can't build on Linux).
 
 1. Configure GitHub Packages access: set `GITHUB_USERNAME` and `GITHUB_TOKEN`
