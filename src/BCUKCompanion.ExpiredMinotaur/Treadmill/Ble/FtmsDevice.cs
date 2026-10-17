@@ -64,9 +64,11 @@ public class FtmsDevice : IDisposable
 
     /// <summary>
     /// Scans for BLE advertisements and returns the address of the first
-    /// device advertising the Fitness Machine service (0x1826).
+    /// device advertising the Fitness Machine service (0x1826), or null if none
+    /// is found before <paramref name="timeout"/> or <paramref name="cancellationToken"/>
+    /// is cancelled.
     /// </summary>
-    public static Task<ulong?> FindFitnessMachineAddressAsync(TimeSpan timeout)
+    public static Task<ulong?> FindFitnessMachineAddressAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         var tcs = new TaskCompletionSource<ulong?>();
         var watcher = new BluetoothLEAdvertisementWatcher
@@ -98,7 +100,8 @@ public class FtmsDevice : IDisposable
 
         watcher.Start();
 
-        _ = Task.Delay(timeout).ContinueWith(_ =>
+        // Timeout and cancellation both end the scan with no result, through the same gate.
+        void StopWithoutResult()
         {
             if (Interlocked.CompareExchange(ref completionGate, 1, 0) == 0)
             {
@@ -106,7 +109,11 @@ public class FtmsDevice : IDisposable
                 watcher.Received -= handler;
                 tcs.TrySetResult(null);
             }
-        });
+        }
+
+        var cancellationRegistration = cancellationToken.Register(StopWithoutResult);
+        _ = Task.Delay(timeout).ContinueWith(_ => StopWithoutResult());
+        _ = tcs.Task.ContinueWith(_ => cancellationRegistration.Dispose(), TaskScheduler.Default);
 
         return tcs.Task;
     }

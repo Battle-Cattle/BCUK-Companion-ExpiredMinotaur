@@ -5,7 +5,7 @@ using System.Windows.Threading;
 using BCUKCompanion.Core;
 using BCUKCompanion.Core.Actions;
 using BCUKCompanion.ExpiredMinotaur.Treadmill;
-using BCUKCompanion.ExpiredMinotaur.UI;
+using BCUKCompanion.ExpiredMinotaur.Treadmill.UI;
 using BCUKCompanion.ExpiredMinotaur.Wiz;
 using BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 using BCUKCompanion.ExpiredMinotaur.Wiz.UI;
@@ -44,6 +44,11 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
     // which would let a second click queue another request behind TreadmillClient's write lock.
     private bool treadmillConnectionOperationInProgress;
 
+    /// <summary>Opens the window on the store's saved devices and mappings.</summary>
+    /// <param name="configStore">Loads the initial config and saves the edited one.</param>
+    /// <param name="wizClient">Used by device discovery and the Test button.</param>
+    /// <param name="treadmillClient">The shared treadmill connection the top panel controls.</param>
+    /// <param name="getCompanionClient">The shell's current client, for live reward/command names.</param>
     public ActionsSettingsWindow(
         ActionsConfigStore configStore, WizClient wizClient, TreadmillClient treadmillClient, Func<CompanionClient?>? getCompanionClient = null)
         : base(configStore, configStore.Load(), getCompanionClient)
@@ -89,10 +94,7 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
         tabs.Items.Add(new TabItem { Header = "Devices", Content = BuildDevicesTab() });
         tabs.Items.Add(new TabItem { Header = "Event Mappings", Content = BuildMappingsTab() });
 
-        var bottomPanel = new DockPanel { Margin = new Thickness(12, 8, 12, 12) };
-        DockPanel.SetDock(SaveButton, Dock.Right);
-        bottomPanel.Children.Add(SaveButton);
-        bottomPanel.Children.Add(StatusText);
+        var bottomPanel = BuildFooter();
 
         var root = new DockPanel();
         DockPanel.SetDock(topPanel, Dock.Top);
@@ -112,23 +114,20 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
         };
     }
 
+    /// <summary>Snapshots the window's current devices and mappings for saving or testing.</summary>
     protected override ActionsConfig BuildConfig() => new() { Devices = devices.ToList(), Mappings = Mappings.ToList() };
 
+    /// <summary>The Wiz and treadmill contexts the mapped actions validate and run against.</summary>
     protected override IEventActionContext BuildContext() =>
         new CompositeEventActionContext(new WizActionContext(wizClient, devices), new TreadmillActionContext(treadmillClient));
 
-    protected override IEventAction? ShowAddActionDialog()
-    {
-        var dialog = new ActionEditDialog(devices, treadmillClient) { Owner = this };
-        return dialog.ShowDialog() == true ? dialog.Result : null;
-    }
+    /// <summary>
+    /// The categories the shell's Add/Edit Action dialog offers, before its built-in Delay.
+    /// </summary>
+    protected override IEnumerable<EventActionEditor> CreateActionEditors() =>
+        [new WizActionEditor(devices), new TreadmillActionEditor()];
 
-    protected override IEventAction? ShowEditActionDialog(IEventAction existing)
-    {
-        var dialog = new ActionEditDialog(devices, treadmillClient, existing) { Owner = this };
-        return dialog.ShowDialog() == true ? dialog.Result : null;
-    }
-
+    /// <summary>Builds the "Devices" tab: the Wiz device list and its Add/Edit/Remove/Discover buttons.</summary>
     private UIElement BuildDevicesTab()
     {
         devicesList.ItemsSource = devices;
@@ -161,6 +160,7 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
         return devicesPanel;
     }
 
+    /// <summary>Adds a device from the edit dialog, rejecting a duplicate IP address.</summary>
     private void OnAddDevice()
     {
         var dialog = new WizDeviceEditDialog { Owner = this };
@@ -176,6 +176,10 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
         }
     }
 
+    /// <summary>
+    /// Replaces the selected device with the edited one and removes any of its actions the edit
+    /// made invalid (e.g. SetColor on a device that no longer supports color).
+    /// </summary>
     private void OnEditDevice()
     {
         if (devicesList.SelectedItem is not WizDevice selected)
@@ -198,9 +202,10 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
             devices[index] = updated;
 
             var context = BuildContext();
-            var removedActionCount = StripMatchingActions(
+            var removedActionCount = RemoveActions(
                 a => a is WizDeviceActionBase d && d.DeviceId == updated.Id && d.Validate(context).Count > 0);
 
+            // Even with nothing removed: the actions' descriptions include the device's name.
             RefreshActionsList();
             StatusText.Text = removedActionCount > 0
                 ? $"Updated device and removed {removedActionCount} action(s) no longer valid for it."
@@ -208,6 +213,7 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
         }
     }
 
+    /// <summary>Removes the selected device and every action that targeted it.</summary>
     private void OnRemoveDevice()
     {
         if (devicesList.SelectedItem is not WizDevice selected)
@@ -218,15 +224,15 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
 
         devices.Remove(selected);
 
-        var removedActionCount = StripMatchingActions(
+        var removedActionCount = RemoveActions(
             a => a is WizDeviceActionBase d && d.DeviceId == selected.Id);
 
-        RefreshActionsList();
         StatusText.Text = removedActionCount > 0
             ? $"Removed device and {removedActionCount} action(s) that referenced it."
             : "Removed device.";
     }
 
+    /// <summary>Adds the devices picked in the LAN discovery dialog.</summary>
     private void OnDiscoverDevices()
     {
         var dialog = new WizDiscoverDevicesDialog(wizClient, devices.Select(d => d.IpAddress).ToList()) { Owner = this };
@@ -239,28 +245,25 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
         }
     }
 
-    private int StripMatchingActions(Func<IEventAction, bool> shouldRemove)
-    {
-        var removedCount = 0;
-        foreach (var mapping in Mappings.ToList())
-        {
-            var remaining = mapping.Actions.Where(a => !shouldRemove(a)).ToList();
-            removedCount += mapping.Actions.Count - remaining.Count;
-            if (remaining.Count != mapping.Actions.Count)
-                ReplaceMappingActions(mapping, remaining);
-        }
-        return removedCount;
-    }
-
+    /// <summary>Shows a treadmill status message, marshalled onto the UI thread.</summary>
+    /// <remarks>
+    /// InvokeAsync, not Invoke: TreadmillClient raises StatusChanged while holding its write lock,
+    /// and blocking that thread on the UI thread would deadlock if the UI thread ever waited on
+    /// the same lock.
+    /// </remarks>
     private void OnTreadmillStatusChanged(object? sender, string message) =>
-        Dispatcher.Invoke(() => treadmillStatusText.Text = message);
+        _ = Dispatcher.InvokeAsync(() => treadmillStatusText.Text = message);
 
+    /// <summary>Updates the current/target speed line (every second) and the connection buttons.</summary>
     private void RefreshTreadmillSpeedText()
     {
         treadmillSpeedText.Text = $"Current: {treadmillClient.CurrentSpeedKmh:0.0} km/h   Target: {treadmillClient.TargetSpeedKmh:0.0} km/h";
         RefreshTreadmillConnectionButtons();
     }
 
+    /// <summary>
+    /// Enables Connect or Disconnect to match the connection, or neither while one is in flight.
+    /// </summary>
     private void RefreshTreadmillConnectionButtons()
     {
         if (treadmillConnectionOperationInProgress)
@@ -274,6 +277,7 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
         treadmillDisconnectButton.IsEnabled = treadmillClient.IsConnected;
     }
 
+    /// <summary>Connects the treadmill, showing any failure in the status line.</summary>
     private async Task OnTreadmillConnectAsync()
     {
         treadmillConnectionOperationInProgress = true;
@@ -293,6 +297,7 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
         }
     }
 
+    /// <summary>Disconnects the treadmill, showing any failure in the status line.</summary>
     private async Task OnTreadmillDisconnectAsync()
     {
         treadmillConnectionOperationInProgress = true;

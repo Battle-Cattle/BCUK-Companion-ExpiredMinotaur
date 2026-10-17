@@ -2,10 +2,10 @@ using BCUKCompanion.Core;
 using BCUKCompanion.Core.Actions;
 using BCUKCompanion.ExpiredMinotaur.Treadmill;
 using BCUKCompanion.ExpiredMinotaur.Treadmill.Actions;
-using BCUKCompanion.ExpiredMinotaur.Updates;
 using BCUKCompanion.ExpiredMinotaur.Wiz;
 using BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 using BCUKCompanion.TrayApp;
+using BCUKCompanion.TrayApp.Updates;
 
 namespace BCUKCompanion.ExpiredMinotaur;
 
@@ -30,7 +30,7 @@ internal static class Program
         registry.Register<TreadmillNudgeSpeedAction>(TreadmillNudgeSpeedAction.ActionKind);
 
         var store = new ActionsConfigStore(DataFolderName, registry);
-        var client = new WizClient();
+        var wizClient = new WizClient();
         var treadmillClient = new TreadmillClient();
 
         // Set via OnClientReady once the tray shell creates (or recreates, on a bot-host
@@ -38,14 +38,17 @@ internal static class Program
         // always see the current instance, even one created after the window itself.
         CompanionClient? companionClient = null;
 
-        var updater = new AppUpdater();
-
         CompanionTrayApplication.Run(new CompanionTrayAppOptions
         {
             DataFolderName = DataFolderName,
-            OnClientReady = client => companionClient = client,
-            // Installs any newer GitHub release in the background, restarting the app.
-            OnTrayIconReady = updater.CheckOnLaunch,
+            OnClientReady = readyClient => companionClient = readyClient,
+            // Installs any newer GitHub release in the background, restarting the app, and adds
+            // a "Check for updates..." tray menu item.
+            Updates = new CompanionUpdateOptions
+            {
+                RepoOwner = "Battle-Cattle",
+                RepoName = "BCUK-Companion-ExpiredMinotaur",
+            },
             // The shell runs every redemption's and advanced command's mapped actions with this,
             // reports failures as balloons, and acknowledges advanced commands from the result.
             // Built per event so it always sees the latest saved mappings and devices.
@@ -55,14 +58,13 @@ internal static class Program
                 return new EventActionDispatcher(
                     () => config.Mappings,
                     () => new CompositeEventActionContext(
-                        new WizActionContext(client, config.Devices),
+                        new WizActionContext(wizClient, config.Devices),
                         new TreadmillActionContext(treadmillClient)));
             },
             AdditionalMenuItems = new[]
             {
                 SingletonWindowMenuItem.Create("Actions...",
-                    () => new ActionsSettingsWindow(store, client, treadmillClient, () => companionClient)),
-                updater.CreateMenuItem(),
+                    () => new ActionsSettingsWindow(store, wizClient, treadmillClient, () => companionClient)),
             },
         });
 
