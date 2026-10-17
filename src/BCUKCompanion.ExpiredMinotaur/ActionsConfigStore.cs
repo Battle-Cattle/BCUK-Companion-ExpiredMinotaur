@@ -7,6 +7,10 @@ using BCUKCompanion.ExpiredMinotaur.Wiz;
 
 namespace BCUKCompanion.ExpiredMinotaur;
 
+/// <summary>
+/// Loads and saves <c>actions-config.json</c>: drops Wiz devices whose IP address can't be parsed,
+/// and migrates the older per-integration config files the first time it runs.
+/// </summary>
 public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeRegistry registry)
     : EventActionConfigStore<ActionsConfig>(dataFolderName, "actions-config.json", registry)
 {
@@ -29,9 +33,13 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
         public List<EventActionMapping> Mappings { get; init; } = [];
     }
 
-    // In addition to the base class's whole-file corruption handling, individual devices with
-    // an unparsable IpAddress (e.g. from a hand-edited actions-config.json) are dropped rather
-    // than flowing through to runtime code such as WizClient, which needs a valid IP to operate on.
+    /// <summary>
+    /// Drops devices with an unparsable IpAddress (e.g. from a hand-edited actions-config.json),
+    /// in addition to the base class's whole-file corruption handling, so they never reach
+    /// runtime code such as WizClient, which needs a valid IP to operate on.
+    /// </summary>
+    /// <param name="config">The config as read from disk (or migrated).</param>
+    /// <returns><paramref name="config"/>, minus any invalid devices.</returns>
     protected override ActionsConfig OnLoaded(ActionsConfig config)
     {
         List<WizDevice>? validDevices = null;
@@ -54,14 +62,17 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
         return validDevices is null ? config : config with { Devices = validDevices };
     }
 
-    // Runs only while actions-config.json doesn't exist. A pre-consolidation install stored Wiz
-    // devices/mappings in wiz-config.json and Treadmill mappings in treadmill-config.json (see
-    // git history of this file for their shapes). If neither exists this is a fresh install and
-    // gets a new ActionsConfig; otherwise combine what's there into one ActionsConfig and persist
-    // it so this migration runs at most once. The legacy files are left in place rather than
-    // deleted - they're inert once actions-config.json exists, and keeping them is a safer
-    // failure mode than deleting a user's only copy of their old settings if this migration has
-    // a bug.
+    /// <summary>
+    /// Runs only while actions-config.json doesn't exist. A pre-consolidation install stored Wiz
+    /// devices/mappings in wiz-config.json and Treadmill mappings in treadmill-config.json (see
+    /// git history of this file for their shapes). If neither exists this is a fresh install and
+    /// gets a new ActionsConfig; otherwise combine what's there into one ActionsConfig and persist
+    /// it so this migration runs at most once. The legacy files are left in place rather than
+    /// deleted - they're inert once actions-config.json exists, and keeping them is a safer
+    /// failure mode than deleting a user's only copy of their old settings if this migration has
+    /// a bug.
+    /// </summary>
+    /// <returns>The migrated config, or a new one on a fresh install.</returns>
     protected override ActionsConfig CreateWhenMissing()
     {
         var directory = Path.GetDirectoryName(ConfigFilePath)!;
@@ -113,10 +124,16 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
         return migrated;
     }
 
-    // isValid guards against a legacy file with an explicit JSON "null" for a required
-    // collection: System.Text.Json sets the property to null in that case (overriding the
-    // record's [] init default), and AddRange(null) would throw. Treat that the same as any
-    // other unreadable legacy file - a failed migration, not a crash.
+    /// <summary>
+    /// Reads one legacy config file and hands it to <paramref name="onSuccess"/>, or returns false
+    /// if it can't be read, parsed or validated.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="isValid"/> guards against a legacy file with an explicit JSON "null" for a
+    /// required collection: System.Text.Json sets the property to null in that case (overriding
+    /// the record's [] init default), and AddRange(null) would throw. Treat that the same as any
+    /// other unreadable legacy file - a failed migration, not a crash.
+    /// </remarks>
     private static bool TryDeserializeLegacyFile<TLegacy>(
         string path, JsonSerializerOptions options, Func<TLegacy, bool> isValid, Action<TLegacy> onSuccess)
     {

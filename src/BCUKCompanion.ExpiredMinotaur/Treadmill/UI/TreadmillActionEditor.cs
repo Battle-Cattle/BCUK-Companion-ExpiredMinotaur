@@ -13,6 +13,7 @@ public sealed class TreadmillActionEditor : EventActionEditor
 {
     private readonly TextBox deltaBox = new() { Text = "1.0" };
 
+    /// <summary>Creates the editor with a default delta of 1.0 km/h.</summary>
     public TreadmillActionEditor()
     {
         View = new StackPanel
@@ -26,15 +27,23 @@ public sealed class TreadmillActionEditor : EventActionEditor
         };
     }
 
+    /// <summary>The category name in the dialog's picker.</summary>
     public override string DisplayName => "Treadmill";
 
+    /// <summary>The speed-delta text box and its label.</summary>
     public override UIElement View { get; }
 
+    /// <summary>True for <see cref="TreadmillNudgeSpeedAction"/>.</summary>
+    /// <param name="action">The action being edited.</param>
     public override bool CanEdit(IEventAction action) => action is TreadmillNudgeSpeedAction;
 
+    /// <summary>Shows an existing action's delta.</summary>
+    /// <param name="action">A <see cref="TreadmillNudgeSpeedAction"/>.</param>
     public override void Load(IEventAction action) =>
         deltaBox.Text = ((TreadmillNudgeSpeedAction)action).DeltaKmh.ToString("R", CultureInfo.InvariantCulture);
 
+    /// <summary>Builds a NudgeSpeed action from the delta, which must be a finite number.</summary>
+    /// <param name="error">Why the input can't be used, when null is returned.</param>
     public override IEventAction? TryBuild(out string? error)
     {
         if (!double.TryParse(deltaBox.Text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var delta)

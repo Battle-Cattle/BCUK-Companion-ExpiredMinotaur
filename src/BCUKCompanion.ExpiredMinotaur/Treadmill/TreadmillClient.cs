@@ -85,6 +85,11 @@ public sealed class TreadmillClient : IDisposable
         };
     }
 
+    /// <summary>
+    /// Scans for a fitness machine, connects, requests control and starts the keep-alive loop.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the scan and the wait for the first speed reading.</param>
+    /// <returns>True once connected; false if already connected, nothing was found, or it failed.</returns>
     public async Task<bool> ConnectAsync(CancellationToken cancellationToken = default)
     {
         // Held for the entire method — see the writeLock field comment — so a concurrent

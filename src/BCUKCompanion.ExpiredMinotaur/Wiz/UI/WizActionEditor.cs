@@ -51,6 +51,8 @@ public sealed class WizActionEditor : EventActionEditor
     private readonly Slider colorTempSlider = new() { Minimum = WizSetColorTemperatureAction.MinColorTemperatureKelvin, Maximum = WizSetColorTemperatureAction.MaxColorTemperatureKelvin, Value = 4000, TickFrequency = 100, IsSnapToTickEnabled = true };
     private readonly TextBlock colorTempValueText = new();
 
+    /// <summary>Creates the editor, preselecting the first device if there is one.</summary>
+    /// <param name="devices">The configured Wiz devices an action can target.</param>
     public WizActionEditor(IReadOnlyList<WizDevice> devices)
     {
         this.devices = devices;
@@ -138,17 +140,26 @@ public sealed class WizActionEditor : EventActionEditor
         RefreshParameterPanelVisibility();
     }
 
+    /// <summary>The category name in the dialog's picker.</summary>
     public override string DisplayName => "Wiz Device";
 
+    /// <summary>The device and action pickers plus each action kind's parameter panel.</summary>
     public override UIElement View { get; }
 
-    // With no devices there's nothing to target, so the dialog preselects another category.
+    /// <summary>
+    /// False with no devices: there's nothing to target, so the dialog preselects another category.
+    /// </summary>
     public override bool IsPreferredForNewAction => devices.Count > 0;
 
+    /// <summary>The device picked in the Device combo, if any.</summary>
     private WizDevice? SelectedDevice => deviceCombo.SelectedItem as WizDevice;
 
+    /// <summary>True for every Wiz device action.</summary>
+    /// <param name="action">The action being edited.</param>
     public override bool CanEdit(IEventAction action) => action is WizDeviceActionBase;
 
+    /// <summary>Shows an existing action's device, kind and parameters.</summary>
+    /// <param name="action">A <see cref="WizDeviceActionBase"/>.</param>
     public override void Load(IEventAction action)
     {
         var wiz = (WizDeviceActionBase)action;
@@ -173,6 +184,8 @@ public sealed class WizActionEditor : EventActionEditor
         }
     }
 
+    /// <summary>Builds the selected kind of action for the selected device.</summary>
+    /// <param name="error">Why no action could be built, when null is returned.</param>
     public override IEventAction? TryBuild(out string? error)
     {
         if (SelectedDevice is not { } device)
@@ -199,6 +212,10 @@ public sealed class WizActionEditor : EventActionEditor
         };
     }
 
+    /// <summary>
+    /// Offers only the action kinds the selected device supports, keeping the current kind when
+    /// it's still offered.
+    /// </summary>
     private void RefreshWizKinds()
     {
         var device = SelectedDevice;
@@ -215,6 +232,7 @@ public sealed class WizActionEditor : EventActionEditor
             : kinds.FirstOrDefault();
     }
 
+    /// <summary>Whether <paramref name="device"/> has the capability <paramref name="kind"/> needs.</summary>
     private static bool IsKindSupported(string kind, WizDevice device) => kind switch
     {
         WizSetBrightnessAction.ActionKind => device.SupportsDimming,
@@ -223,6 +241,7 @@ public sealed class WizActionEditor : EventActionEditor
         _ => true,
     };
 
+    /// <summary>Shows only the parameter panel the selected action kind uses.</summary>
     private void RefreshParameterPanelVisibility()
     {
         var kind = (wizKindCombo.SelectedItem as WizActionKindOption)?.Kind;
@@ -231,6 +250,7 @@ public sealed class WizActionEditor : EventActionEditor
         colorTempPanel.Visibility = kind == SetColorTemperatureOption.Kind ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    /// <summary>Previews the color the R/G/B sliders currently describe.</summary>
     private void UpdateColorSwatch() =>
         colorSwatch.Background = new SolidColorBrush(Color.FromRgb((byte)rSlider.Value, (byte)gSlider.Value, (byte)bSlider.Value));
 }
