@@ -31,9 +31,11 @@ published to the org's GitHub Packages feed.
 
 Grab the latest `BCUKCompanion.ExpiredMinotaur-vX.Y.Z-win-x64.zip` from the
 [Releases page](https://github.com/Battle-Cattle/BCUK-Companion-ExpiredMinotaur/releases/latest),
-extract it anywhere, and run `BCUKCompanion.ExpiredMinotaur.exe`. The build
-is self-contained, so no .NET runtime install is needed (Windows 10 1809 or
-later, x64).
+extract it anywhere, and run `BCUKCompanion.ExpiredMinotaur.exe`. The zip holds
+just that `.exe` and `appsettings.json`: it's a self-contained single-file build,
+so no .NET runtime install is needed (Windows 10 1809 or later, x64). Installs
+updated from an older multi-file release delete that release's leftover files
+on their next launch.
 
 ### Updates
 
