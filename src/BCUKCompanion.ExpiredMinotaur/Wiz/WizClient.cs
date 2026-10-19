@@ -163,32 +163,42 @@ public sealed class WizClient
         }
     }
 
+    /// <summary>
+    /// How many times a command is sent within its timeout. WiZ speaks plain UDP, so a single lost
+    /// request or reply (ordinary on Wi-Fi) would otherwise fail the action outright; every command
+    /// sent here is safe to repeat (setPilot sets absolute values, getPilot only reads).
+    /// </summary>
+    private const int SendAttempts = 3;
+
+    /// <summary>
+    /// Sends <paramref name="request"/> to the device and returns its reply, resending up to
+    /// <see cref="SendAttempts"/> times, evenly spaced across <paramref name="timeout"/>, until one
+    /// arrives. All attempts share one socket, so a late reply to an earlier attempt still counts.
+    /// </summary>
+    /// <returns>The reply's text, or null if none arrived in time (or the address is invalid).</returns>
     private static async Task<string?> SendAndReceiveAsync(
         string ipAddress, WizRequest request, TimeSpan timeout, CancellationToken cancellationToken)
     {
         using var udp = new UdpClient();
         var requestBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(request));
+        var attemptWindow = TimeSpan.FromTicks(timeout.Ticks / SendAttempts);
 
         try
         {
             var targetAddress = IPAddress.Parse(ipAddress);
-            await udp.SendAsync(requestBytes, new IPEndPoint(targetAddress, WizPort), cancellationToken)
-                .ConfigureAwait(false);
-
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(timeout);
-
-            // Loop rather than a single ReceiveAsync: a stray datagram from another host on the
-            // LAN (e.g. another Wiz device's own reply) can land on this ephemeral socket within
-            // the timeout window and must not be mistaken for the intended device's response.
-            while (true)
+            for (var attempt = 1; attempt <= SendAttempts; attempt++)
             {
-                var result = await udp.ReceiveAsync(cts.Token).ConfigureAwait(false);
-                if (result.RemoteEndPoint.Address.Equals(targetAddress))
+                await udp.SendAsync(requestBytes, new IPEndPoint(targetAddress, WizPort), cancellationToken)
+                    .ConfigureAwait(false);
+
+                var reply = await ReceiveFromAsync(udp, targetAddress, attemptWindow, cancellationToken).ConfigureAwait(false);
+                if (reply is not null)
                 {
-                    return Encoding.UTF8.GetString(result.Buffer);
+                    return reply;
                 }
             }
+
+            return null;
         }
         catch (OperationCanceledException)
         {
@@ -203,6 +213,36 @@ public sealed class WizClient
             // Defense in depth: ActionsConfigStore.Load() already filters out devices with an
             // unparsable IpAddress, but this guards any other caller that hands in a raw string.
             Debug.WriteLine($"Wiz command to '{ipAddress}' failed: '{ipAddress}' is not a valid IP address ({ex.Message}).");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Waits up to <paramref name="window"/> for a datagram from <paramref name="targetAddress"/>.
+    /// Loops rather than a single ReceiveAsync: a stray datagram from another host on the LAN (e.g.
+    /// another Wiz device's own reply) can land on this ephemeral socket and must not be mistaken
+    /// for the intended device's response.
+    /// </summary>
+    /// <returns>The reply's text, or null if the window passed without one.</returns>
+    /// <exception cref="OperationCanceledException">The caller's token was canceled.</exception>
+    private static async Task<string?> ReceiveFromAsync(
+        UdpClient udp, IPAddress targetAddress, TimeSpan window, CancellationToken cancellationToken)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(window);
+        try
+        {
+            while (true)
+            {
+                var result = await udp.ReceiveAsync(cts.Token).ConfigureAwait(false);
+                if (result.RemoteEndPoint.Address.Equals(targetAddress))
+                {
+                    return Encoding.UTF8.GetString(result.Buffer);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
             return null;
         }
     }
