@@ -13,6 +13,10 @@ public sealed class TreadmillClient : IDisposable
     private static readonly TimeSpan FirstReadingTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan KeepAliveInterval = TimeSpan.FromSeconds(2);
 
+    // A speed reading older than this is treated as unknown, so the keep-alive falls back to
+    // re-sending the target rather than reacting to a belt speed it can no longer see.
+    private static readonly TimeSpan SpeedReadingMaxAge = TimeSpan.FromSeconds(5);
+
     // Guards every Control Point write (Nudge and keep-alive both go through it) AND the
     // full Connect/Disconnect lifecycle. A redemption-triggered Nudge can land at any moment
     // concurrent with the keep-alive tick; without serialization, two overlapping
@@ -44,6 +48,14 @@ public sealed class TreadmillClient : IDisposable
     private FtmsDevice device = new();
     private ControlPointService? controlPointService;
     private TaskCompletionSource<double>? firstSpeedReading;
+
+    // Follows a speed set on the treadmill's own console instead of the keep-alive reverting it.
+    // Only used under writeLock.
+    private readonly TreadmillSpeedFollower speedFollower = new();
+
+    // When CurrentSpeedKmh was last reported, as DateTime.UtcNow ticks (0 = never). Written on a
+    // BLE callback thread, read under writeLock, hence Interlocked.
+    private long currentSpeedAtTicks;
 
     /// <summary>
     /// Fires on whatever thread triggered it (a BLE callback thread, or the keep-alive
@@ -80,6 +92,7 @@ public sealed class TreadmillClient : IDisposable
                 if (snapshot.InstantaneousSpeedKmh is { } speed)
                 {
                     CurrentSpeedKmh = speed;
+                    Interlocked.Exchange(ref currentSpeedAtTicks, DateTime.UtcNow.Ticks);
                     firstSpeedReading?.TrySetResult(speed);
                 }
             }
@@ -291,6 +304,7 @@ public sealed class TreadmillClient : IDisposable
             RaiseStatus("No speed reading within 3s of connecting — the first Nudge may change speed unexpectedly.");
         }
         firstSpeedReading = null;
+        speedFollower.OnOwnTargetSet(DateTime.UtcNow);
 
         return true;
     }
@@ -333,6 +347,7 @@ public sealed class TreadmillClient : IDisposable
             controlPointService = null;
             IsConnected = false;
             CurrentSpeedKmh = 0;
+            Interlocked.Exchange(ref currentSpeedAtTicks, 0);
 
             device.Dispose();
             device = new FtmsDevice();
@@ -351,8 +366,9 @@ public sealed class TreadmillClient : IDisposable
     /// Clamps <see cref="TargetSpeedKmh"/> + <paramref name="deltaKmh"/> into
     /// [<see cref="MinSpeedKmh"/>, <see cref="MaxSpeedKmh"/>], snaps to
     /// <see cref="SpeedStepKmh"/>, sends SetTargetSpeed, and only updates the stored target
-    /// if the write was accepted. Deliberately never sends Start — if the treadmill isn't
-    /// already moving, nudging simply won't move a stopped belt.
+    /// if the write was accepted. If the belt is running at a speed set on the treadmill's own
+    /// console, the nudge starts from that speed instead of the stale target. Deliberately never
+    /// sends Start — if the treadmill isn't already moving, nudging simply won't move a stopped belt.
     /// </summary>
     public async Task<bool> NudgeSpeedAsync(double deltaKmh, CancellationToken cancellationToken = default)
     {
@@ -385,11 +401,16 @@ public sealed class TreadmillClient : IDisposable
                 return false;
             }
 
-            var snapped = SnapAndClamp(TargetSpeedKmh + deltaKmh);
+            var now = DateTime.UtcNow;
+            var fromKmh = speedFollower.BeltOverridesTarget(TargetSpeedKmh, RecentBeltSpeed(now), MinSpeedKmh, SpeedStepKmh, now)
+                ? CurrentSpeedKmh
+                : TargetSpeedKmh;
+            var snapped = SnapAndClamp(fromKmh + deltaKmh);
             var result = await controlPointService.SetTargetSpeedAsync(snapped).ConfigureAwait(false);
             if (result.Accepted)
             {
                 TargetSpeedKmh = snapped;
+                speedFollower.OnOwnTargetSet(DateTime.UtcNow);
             }
             else
             {
@@ -409,6 +430,13 @@ public sealed class TreadmillClient : IDisposable
         }
     }
 
+    /// <summary>The belt's last reported speed, or null if there's no reading from the last <see cref="SpeedReadingMaxAge"/>.</summary>
+    private double? RecentBeltSpeed(DateTime now)
+    {
+        long ticks = Interlocked.Read(ref currentSpeedAtTicks);
+        return ticks != 0 && now - new DateTime(ticks, DateTimeKind.Utc) <= SpeedReadingMaxAge ? CurrentSpeedKmh : null;
+    }
+
     private double SnapAndClamp(double speedKmh)
     {
         var snapped = Math.Round(speedKmh / SpeedStepKmh) * SpeedStepKmh;
@@ -416,7 +444,10 @@ public sealed class TreadmillClient : IDisposable
     }
 
     // Proven load-bearing in the test app, not just watchdog avoidance: a single
-    // SetTargetSpeed write doesn't reliably stick without reinforcement.
+    // SetTargetSpeed write doesn't reliably stick without reinforcement. Re-sending the target
+    // blindly also undid any speed change made on the treadmill's own console within 2s, so
+    // each tick first checks the belt (see TreadmillSpeedFollower): it skips the write while
+    // the console is changing or has stopped the belt, and adopts a console speed once it settles.
     private async Task SendKeepAliveAsync()
     {
         if (!IsConnected || controlPointService is null)
@@ -430,6 +461,18 @@ public sealed class TreadmillClient : IDisposable
             if (Volatile.Read(ref disposed) != 0 || !IsConnected || controlPointService is null)
             {
                 return;
+            }
+
+            var now = DateTime.UtcNow;
+            switch (speedFollower.Decide(TargetSpeedKmh, RecentBeltSpeed(now), MinSpeedKmh, SpeedStepKmh, now))
+            {
+                case KeepAliveAction.Skip:
+                    return;
+                case KeepAliveAction.AdoptBeltSpeed:
+                    TargetSpeedKmh = SnapAndClamp(CurrentSpeedKmh);
+                    speedFollower.OnBeltSpeedAdopted();
+                    RaiseStatus($"Speed changed on the treadmill — now holding {TargetSpeedKmh:0.0} km/h.");
+                    break;
             }
 
             await controlPointService.SetTargetSpeedAsync(TargetSpeedKmh).ConfigureAwait(false);
