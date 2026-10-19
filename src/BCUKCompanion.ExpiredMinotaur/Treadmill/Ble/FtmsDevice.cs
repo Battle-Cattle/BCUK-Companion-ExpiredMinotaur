@@ -52,12 +52,19 @@ public class FtmsDevice : IDisposable
     public event EventHandler<byte[]>? ControlPointIndicationReceived;
     public event EventHandler<byte[]>? FitnessMachineStatusReceived;
 
+    /// <summary>
+    /// Raised (on a BLE callback thread) when the connected treadmill drops the connection: it was
+    /// powered off, went out of range, or Windows lost the link.
+    /// </summary>
+    public event EventHandler? ConnectionLost;
+
     // Named so Dispose can detach them — anonymous lambdas passed directly
     // to += can't be removed with -=, which left GATT callbacks firing
     // into a torn-down ViewModel on window close.
     private TypedEventHandler<GattCharacteristic, GattValueChangedEventArgs>? _controlPointHandler;
     private TypedEventHandler<GattCharacteristic, GattValueChangedEventArgs>? _treadmillDataHandler;
     private TypedEventHandler<GattCharacteristic, GattValueChangedEventArgs>? _statusHandler;
+    private TypedEventHandler<BluetoothLEDevice, object>? _connectionStatusHandler;
     private bool _disposed;
 
     public bool IsConnected => _device?.ConnectionStatus == BluetoothConnectionStatus.Connected;
@@ -144,6 +151,15 @@ public class FtmsDevice : IDisposable
             }
 
             _fitnessService = servicesResult.Services[0];
+
+            _connectionStatusHandler = (sender, _) =>
+            {
+                if (sender.ConnectionStatus == BluetoothConnectionStatus.Disconnected)
+                {
+                    ConnectionLost?.Invoke(this, EventArgs.Empty);
+                }
+            };
+            _device.ConnectionStatusChanged += _connectionStatusHandler;
 
             ControlPoint = await GetCharacteristicAsync(FtmsConstants.FitnessMachineControlPoint);
             TreadmillData = await GetCharacteristicAsync(FtmsConstants.TreadmillData);
@@ -313,6 +329,9 @@ public class FtmsDevice : IDisposable
             TreadmillData.ValueChanged -= _treadmillDataHandler;
         if (FitnessMachineStatus != null && _statusHandler != null)
             FitnessMachineStatus.ValueChanged -= _statusHandler;
+        if (_device != null && _connectionStatusHandler != null)
+            _device.ConnectionStatusChanged -= _connectionStatusHandler;
+        _connectionStatusHandler = null;
 
         _fitnessService?.Dispose();
         _fitnessService = null;
@@ -331,5 +350,6 @@ public class FtmsDevice : IDisposable
         TreadmillDataReceived = null;
         ControlPointIndicationReceived = null;
         FitnessMachineStatusReceived = null;
+        ConnectionLost = null;
     }
 }

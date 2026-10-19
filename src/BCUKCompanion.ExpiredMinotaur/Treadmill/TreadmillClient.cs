@@ -67,6 +67,11 @@ public sealed class TreadmillClient : IDisposable
 
     private void AttachDeviceEvents(FtmsDevice attachedDevice)
     {
+        // Without this the client kept reporting itself connected after the treadmill was powered
+        // off or went out of range: every keep-alive failed (a status every 2s) and every nudge
+        // failed until the user clicked Disconnect then Connect.
+        attachedDevice.ConnectionLost += (_, _) => _ = DisconnectAsync(attachedDevice, "Treadmill disconnected (powered off or out of range). Click Connect to reconnect.");
+
         attachedDevice.TreadmillDataReceived += (_, data) =>
         {
             try
@@ -295,7 +300,15 @@ public sealed class TreadmillClient : IDisposable
     /// later Connect can scan and re-read setup-dependent state instead of reusing a
     /// torn-down instance, exactly like the test app's Disconnect button.
     /// </summary>
-    public async Task DisconnectAsync()
+    public Task DisconnectAsync() => DisconnectAsync(onlyDevice: null, "Disconnected.");
+
+    /// <summary>
+    /// Tears down the connection (see <see cref="DisconnectAsync()"/>) and reports
+    /// <paramref name="status"/>. With <paramref name="onlyDevice"/> set, does nothing unless that
+    /// is still the current device, so a late connection-lost callback from a device already
+    /// replaced by a reconnect can't tear down the new connection.
+    /// </summary>
+    private async Task DisconnectAsync(FtmsDevice? onlyDevice, string status)
     {
         // Wait for any write already in flight (Nudge or keep-alive) — or a ConnectAsync
         // still mid-flight, which now holds this same lock for its entire body — to release
@@ -305,7 +318,8 @@ public sealed class TreadmillClient : IDisposable
         await writeLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (Volatile.Read(ref disposed) != 0)
+            if (Volatile.Read(ref disposed) != 0
+                || (onlyDevice is not null && (!ReferenceEquals(onlyDevice, device) || !IsConnected)))
             {
                 return;
             }
@@ -330,7 +344,7 @@ public sealed class TreadmillClient : IDisposable
             writeLock.Release();
         }
 
-        RaiseStatus("Disconnected.");
+        RaiseStatus(status);
     }
 
     /// <summary>
