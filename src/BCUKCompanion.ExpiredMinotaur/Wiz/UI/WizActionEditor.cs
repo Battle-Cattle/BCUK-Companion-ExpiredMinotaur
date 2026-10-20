@@ -16,8 +16,12 @@ namespace BCUKCompanion.ExpiredMinotaur.Wiz.UI;
 /// </summary>
 public sealed class WizActionEditor : EventActionEditor
 {
+    /// <summary>One entry in the action-kind picker.</summary>
+    /// <param name="Kind">The action kind it creates.</param>
+    /// <param name="DisplayName">The name shown in the picker.</param>
     private sealed record WizActionKindOption(string Kind, string DisplayName)
     {
+        /// <summary>The name shown in the picker.</summary>
         public override string ToString() => DisplayName;
     }
 
@@ -38,7 +42,7 @@ public sealed class WizActionEditor : EventActionEditor
     private readonly ComboBox wizKindCombo = new() { Margin = new Thickness(0, 0, 0, 8) };
 
     private readonly StackPanel brightnessPanel;
-    private readonly Slider brightnessSlider = new() { Minimum = WizSetBrightnessAction.MinBrightness, Maximum = WizSetBrightnessAction.MaxBrightness, Value = 100, TickFrequency = 1, IsSnapToTickEnabled = true };
+    private readonly Slider brightnessSlider = new() { Minimum = WizRangeSettingAction.BrightnessSetting.Min, Maximum = WizRangeSettingAction.BrightnessSetting.Max, Value = 100, TickFrequency = 1, IsSnapToTickEnabled = true };
     private readonly TextBlock brightnessValueText = new();
 
     private readonly StackPanel colorPanel;
@@ -48,7 +52,7 @@ public sealed class WizActionEditor : EventActionEditor
     private readonly Border colorSwatch = new() { Width = 32, Height = 32, BorderBrush = Brushes.Black, BorderThickness = new Thickness(1), Margin = new Thickness(8, 0, 0, 0) };
 
     private readonly StackPanel colorTempPanel;
-    private readonly Slider colorTempSlider = new() { Minimum = WizSetColorTemperatureAction.MinColorTemperatureKelvin, Maximum = WizSetColorTemperatureAction.MaxColorTemperatureKelvin, Value = 4000, TickFrequency = 100, IsSnapToTickEnabled = true };
+    private readonly Slider colorTempSlider = new() { Minimum = WizRangeSettingAction.ColorTemperatureSetting.Min, Maximum = WizRangeSettingAction.ColorTemperatureSetting.Max, Value = 4000, TickFrequency = 100, IsSnapToTickEnabled = true };
     private readonly TextBlock colorTempValueText = new();
 
     /// <summary>Creates the editor, preselecting the first device if there is one.</summary>

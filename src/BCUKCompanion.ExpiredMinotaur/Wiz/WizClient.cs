@@ -7,34 +7,65 @@ using System.Text.Json;
 
 namespace BCUKCompanion.ExpiredMinotaur.Wiz;
 
+/// <summary>A device that answered discovery.</summary>
+/// <param name="IpAddress">The address it replied from.</param>
+/// <param name="ModuleName">Its reported module name, which identifies the model (and so its capabilities).</param>
 public sealed record WizDiscoveredDevice(string IpAddress, string ModuleName);
 
-// State is null when the device's getPilot response omits the "state" field (seen on some
-// plug firmware) — callers must treat that as "unknown," not silently assume off.
+/// <summary>A device's state from <c>getPilot</c>; each field is null when the reply omits it.</summary>
+/// <param name="State">
+/// Whether it's on. Null when the reply omits the "state" field (seen on some plug firmware):
+/// callers must treat that as unknown, not silently assume off.
+/// </param>
+/// <param name="Dimming">Brightness, 1–100%.</param>
+/// <param name="R">Red component of the colour.</param>
+/// <param name="G">Green component of the colour.</param>
+/// <param name="B">Blue component of the colour.</param>
+/// <param name="Temp">Colour temperature, in kelvin.</param>
 public sealed record WizPilotStatus(bool? State, int? Dimming, byte? R, byte? G, byte? B, int? Temp);
 
+/// <summary>
+/// Talks to WiZ lights and plugs over their LAN protocol: JSON commands in UDP datagrams to port
+/// 38899, resent until the device replies, plus broadcast discovery.
+/// </summary>
 public sealed class WizClient
 {
+    /// <summary>The UDP port every WiZ device listens on.</summary>
     private const int WizPort = 38899;
 
+    /// <summary>How long a command keeps being resent before it fails, unless the caller passes its own timeout.</summary>
     public static readonly TimeSpan DefaultCommandTimeout = TimeSpan.FromSeconds(2);
+    /// <summary>How long discovery listens for replies, unless the caller passes its own window.</summary>
     public static readonly TimeSpan DefaultDiscoveryWindow = TimeSpan.FromSeconds(3);
 
-    // Lowercase parameter names so System.Text.Json emits the exact "method"/"params"
-    // wire format the Wiz LAN protocol expects, with no naming-policy configuration needed.
+    /// <summary>
+    /// One request on the wire. Lowercase parameter names so System.Text.Json emits the exact
+    /// "method"/"params" format the Wiz LAN protocol expects, with no naming-policy configuration needed.
+    /// </summary>
     private sealed record WizRequest(string method, object @params);
 
+    /// <summary>Sends a <c>setPilot</c> command (turn on/off, brightness, colour, …) to one device.</summary>
+    /// <param name="ipAddress">The device's IP address.</param>
+    /// <param name="paramsPayload">The command's <c>params</c> object, e.g. <c>new { state = true }</c>.</param>
+    /// <param name="timeout">How long to keep resending before giving up; defaults to <see cref="DefaultCommandTimeout"/>.</param>
+    /// <param name="cancellationToken">Cancels the command.</param>
+    /// <returns>Whether the device replied and reported success.</returns>
     public async Task<bool> SetPilotAsync(
         string ipAddress, object paramsPayload, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
     {
         var response = await SendAndReceiveAsync(
             ipAddress, new WizRequest("setPilot", paramsPayload), timeout ?? DefaultCommandTimeout, cancellationToken)
             .ConfigureAwait(false);
-        if (response is null)
-        {
-            return false;
-        }
+        return response is not null && ParseSetPilotResponse(response);
+    }
 
+    /// <summary>
+    /// Whether a <c>setPilot</c> reply means success: no <c>error</c>, and <c>result.success</c> true
+    /// (a reply with no <c>success</c> field counts as success). Unparsable replies count as failure.
+    /// </summary>
+    /// <param name="response">The reply's JSON text.</param>
+    internal static bool ParseSetPilotResponse(string response)
+    {
         try
         {
             using var doc = JsonDocument.Parse(response);
@@ -54,17 +85,25 @@ public sealed class WizClient
         }
     }
 
+    /// <summary>Asks one device for its current state with <c>getPilot</c>.</summary>
+    /// <param name="ipAddress">The device's IP address.</param>
+    /// <param name="timeout">How long to keep resending before giving up; defaults to <see cref="DefaultCommandTimeout"/>.</param>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    /// <returns>The device's state, or null if it didn't reply or the reply couldn't be read.</returns>
     public async Task<WizPilotStatus?> GetPilotAsync(
         string ipAddress, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
     {
         var response = await SendAndReceiveAsync(
             ipAddress, new WizRequest("getPilot", new { }), timeout ?? DefaultCommandTimeout, cancellationToken)
             .ConfigureAwait(false);
-        if (response is null)
-        {
-            return null;
-        }
+        return response is null ? null : ParsePilotStatus(response);
+    }
 
+    /// <summary>Reads a <c>getPilot</c> reply's <c>result</c>; fields the reply omits stay null.</summary>
+    /// <param name="response">The reply's JSON text.</param>
+    /// <returns>The state, or null if the reply has no <c>result</c> or can't be parsed.</returns>
+    internal static WizPilotStatus? ParsePilotStatus(string response)
+    {
         try
         {
             using var doc = JsonDocument.Parse(response);
@@ -88,6 +127,12 @@ public sealed class WizClient
         }
     }
 
+    /// <summary>
+    /// Broadcasts <c>getSystemConfig</c> and yields each device that answers within the window,
+    /// once per address.
+    /// </summary>
+    /// <param name="listenWindow">How long to listen; defaults to <see cref="DefaultDiscoveryWindow"/>.</param>
+    /// <param name="cancellationToken">Ends discovery early.</param>
     public async IAsyncEnumerable<WizDiscoveredDevice> DiscoverAsync(
         TimeSpan? listenWindow = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {

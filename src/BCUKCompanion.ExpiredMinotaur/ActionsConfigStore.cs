@@ -22,14 +22,20 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
     // Shapes of the two per-integration config files this replaced (wiz-config.json,
     // treadmill-config.json), kept only so a pre-consolidation install's devices and mappings
     // can be migrated into actions-config.json instead of silently disappearing.
+    /// <summary>The shape of the old <c>wiz-config.json</c>.</summary>
     private sealed record LegacyWizConfig
     {
+        /// <summary>The WiZ devices.</summary>
         public List<WizDevice> Devices { get; init; } = [];
+
+        /// <summary>The mappings, holding only Wiz actions.</summary>
         public List<EventActionMapping> Mappings { get; init; } = [];
     }
 
+    /// <summary>The shape of the old <c>treadmill-config.json</c>.</summary>
     private sealed record LegacyTreadmillConfig
     {
+        /// <summary>The mappings, holding only treadmill actions.</summary>
         public List<EventActionMapping> Mappings { get; init; } = [];
     }
 
@@ -134,6 +140,11 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
     /// the record's [] init default), and AddRange(null) would throw. Treat that the same as any
     /// other unreadable legacy file - a failed migration, not a crash.
     /// </remarks>
+    /// <typeparam name="TLegacy">The legacy file's shape.</typeparam>
+    /// <param name="path">The legacy file.</param>
+    /// <param name="options">Serializer options that can read the file's actions.</param>
+    /// <param name="isValid">Checks the parsed file's required collections are present.</param>
+    /// <param name="onSuccess">Takes the parsed file's contents.</param>
     private static bool TryDeserializeLegacyFile<TLegacy>(
         string path, JsonSerializerOptions options, Func<TLegacy, bool> isValid, Action<TLegacy> onSuccess)
     {

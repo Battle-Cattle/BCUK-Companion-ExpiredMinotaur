@@ -8,14 +8,21 @@ using SelectionMode = System.Windows.Controls.SelectionMode;
 
 namespace BCUKCompanion.ExpiredMinotaur.Wiz.UI;
 
+/// <summary>
+/// Scans the LAN for WiZ devices not already in the list and lets the user add the ones they pick,
+/// with type and capabilities inferred from each module name.
+/// </summary>
 public sealed class WizDiscoverDevicesDialog : Window
 {
+    /// <summary>One row of the results list: a discovered device, shown with its inferred type.</summary>
     private sealed class DiscoveredItem(WizDiscoveredDevice device)
     {
+        /// <summary>The device that answered discovery.</summary>
         public WizDiscoveredDevice Device { get; } = device;
 
+        /// <summary>The row's text: module name, address and inferred type.</summary>
         public override string ToString() =>
-            $"{Device.ModuleName} - {Device.IpAddress} (inferred: {InferDeviceType(Device.ModuleName)})";
+            $"{Device.ModuleName} - {Device.IpAddress} (inferred: {WizModuleInference.InferDeviceType(Device.ModuleName)})";
     }
 
     private readonly WizClient client;
@@ -24,8 +31,12 @@ public sealed class WizDiscoverDevicesDialog : Window
     private readonly List<DiscoveredItem> items = [];
     private bool isScanning;
 
+    /// <summary>The devices the user chose to add, once the dialog closes with OK.</summary>
     public IReadOnlyList<WizDevice> AddedDevices { get; private set; } = [];
 
+    /// <summary>Creates the dialog; discovery starts as soon as it loads.</summary>
+    /// <param name="client">The client to discover devices with.</param>
+    /// <param name="knownIpAddresses">Addresses already in the device list, left out of the results.</param>
     public WizDiscoverDevicesDialog(WizClient client, IReadOnlyCollection<string> knownIpAddresses)
     {
         this.client = client;
@@ -69,23 +80,7 @@ public sealed class WizDiscoverDevicesDialog : Window
         Loaded += async (_, _) => await RunDiscoveryAsync(knownIpAddresses).ConfigureAwait(true);
     }
 
-    private static WizDeviceType InferDeviceType(string moduleName)
-    {
-        return moduleName.Contains("SOCKET", StringComparison.OrdinalIgnoreCase) ? WizDeviceType.Plug : WizDeviceType.Light;
-    }
-
-    private static (bool Color, bool ColorTemp, bool Dimming) InferCapabilities(string moduleName)
-    {
-        if (moduleName.Contains("SOCKET", StringComparison.OrdinalIgnoreCase))
-        {
-            return (false, false, false);
-        }
-
-        var supportsColor = moduleName.Contains("RGB", StringComparison.OrdinalIgnoreCase);
-        var supportsColorTemp = supportsColor || moduleName.Contains("TW", StringComparison.OrdinalIgnoreCase);
-        return (supportsColor, supportsColorTemp, true);
-    }
-
+    /// <summary>Runs one discovery scan and lists the new devices it finds (ignored if a scan is already running).</summary>
     private async Task RunDiscoveryAsync(IReadOnlyCollection<string> knownIpAddresses)
     {
         if (isScanning)
@@ -123,6 +118,7 @@ public sealed class WizDiscoverDevicesDialog : Window
         }
     }
 
+    /// <summary>Closes the dialog with the selected devices in <see cref="AddedDevices"/>, or asks for a selection.</summary>
     private void OnAddSelected()
     {
         var selected = resultsList.SelectedItems.Cast<DiscoveredItem>().ToList();
@@ -132,21 +128,7 @@ public sealed class WizDiscoverDevicesDialog : Window
             return;
         }
 
-        var added = new List<WizDevice>();
-        foreach (var item in selected)
-        {
-            var (color, colorTemp, dimming) = InferCapabilities(item.Device.ModuleName);
-            added.Add(new WizDevice(
-                Guid.NewGuid(),
-                item.Device.ModuleName,
-                item.Device.IpAddress,
-                InferDeviceType(item.Device.ModuleName),
-                color,
-                colorTemp,
-                dimming));
-        }
-
-        AddedDevices = added;
+        AddedDevices = selected.Select(item => WizModuleInference.ToDevice(item.Device, Guid.NewGuid())).ToList();
         DialogResult = true;
     }
 }

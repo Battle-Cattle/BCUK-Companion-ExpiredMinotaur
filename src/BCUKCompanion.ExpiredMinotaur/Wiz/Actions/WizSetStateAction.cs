@@ -7,11 +7,15 @@ namespace BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 /// </summary>
 public abstract class WizSetStateAction : WizDeviceActionBase
 {
+    /// <summary>The on/off state the action sends.</summary>
     protected abstract bool TargetState { get; }
 
+    /// <inheritdoc/>
     protected override bool SupportsPlugs => true;
 
+    /// <inheritdoc/>
     protected override IReadOnlyList<string> ValidateDeviceSpecific(WizDevice device) => [];
 
+    /// <inheritdoc/>
     protected override object BuildPayload() => new { state = TargetState };
 }

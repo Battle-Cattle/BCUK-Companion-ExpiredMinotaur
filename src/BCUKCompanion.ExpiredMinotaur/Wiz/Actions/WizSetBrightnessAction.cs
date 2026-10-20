@@ -1,28 +1,11 @@
-using System.Text.Json.Serialization;
-
 namespace BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 
-public sealed class WizSetBrightnessAction : WizDeviceActionBase
+/// <summary>Turns a dimmable light on at a set brightness.</summary>
+public sealed class WizSetBrightnessAction() : WizRangeSettingAction(BrightnessSetting)
 {
+    /// <summary>The <c>kind</c> this action is stored under in actions-config.json.</summary>
     public const string ActionKind = "wiz.setBrightness";
-    public const int MinBrightness = 1;
-    public const int MaxBrightness = 100;
 
-    public int Brightness { get; set; }
-
-    [JsonIgnore]
-    public override string Kind => ActionKind;
-
-    protected override bool SupportsPlugs => false;
-
-    protected override string DescribeAction() => $"SetBrightness {Brightness}%";
-
-    protected override IReadOnlyList<string> ValidateDeviceSpecific(WizDevice device)
-        => ValidateCapabilityAndRange(new CapabilityRangeCheck(
-            device.SupportsDimming,
-            $"{device.Name} does not support brightness control.",
-            Brightness, MinBrightness, MaxBrightness,
-            $"Brightness must be between {MinBrightness} and {MaxBrightness}."));
-
-    protected override object BuildPayload() => StatePayload("dimming", Brightness);
+    /// <summary>The brightness to set, in percent (range: <see cref="WizRangeSettingAction.BrightnessSetting"/>).</summary>
+    public int Brightness { get => Value; set => Value = value; }
 }

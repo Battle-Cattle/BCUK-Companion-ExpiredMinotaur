@@ -65,13 +65,25 @@ public sealed class TreadmillClient : IDisposable
     /// </summary>
     public event EventHandler<string>? StatusChanged;
 
+    /// <summary>Whether a treadmill is connected and accepting commands.</summary>
     public bool IsConnected { get; private set; }
+
+    /// <summary>The lowest target speed, in km/h: the device's own once connected, a default before.</summary>
     public double MinSpeedKmh { get; private set; } = FtmsConstants.MinSpeedKmh;
+
+    /// <summary>The highest target speed, in km/h: the device's own once connected, a default before.</summary>
     public double MaxSpeedKmh { get; private set; } = FtmsConstants.MaxSpeedKmh;
+
+    /// <summary>The device's speed step, in km/h; targets are rounded to it.</summary>
     public double SpeedStepKmh { get; private set; } = FtmsConstants.SpeedStepKmh;
+
+    /// <summary>The target speed last sent to (or adopted from) the treadmill, in km/h.</summary>
     public double TargetSpeedKmh { get; private set; }
+
+    /// <summary>The belt speed the treadmill last reported, in km/h.</summary>
     public double CurrentSpeedKmh { get; private set; }
 
+    /// <summary>Creates a disconnected client; call <see cref="ConnectAsync"/> to find and connect to the treadmill.</summary>
     public TreadmillClient()
     {
         followTimer = new System.Threading.Timer(_ => _ = FollowBeltSpeedAsync(), null, Timeout.Infinite, Timeout.Infinite);
@@ -513,6 +525,7 @@ public sealed class TreadmillClient : IDisposable
     /// <summary>Raises <see cref="StatusChanged"/> with a user-facing status line.</summary>
     private void RaiseStatus(string message) => StatusChanged?.Invoke(this, message);
 
+    /// <summary>Stops the follow timer and disconnects; any call still waiting on the write lock then does nothing.</summary>
     public void Dispose()
     {
         // Set before attempting the lock: any Connect/Nudge/follow-tick call still queued on

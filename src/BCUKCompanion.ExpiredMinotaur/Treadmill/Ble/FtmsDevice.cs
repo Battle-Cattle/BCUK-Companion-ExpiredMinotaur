@@ -6,13 +6,26 @@ using Windows.Storage.Streams;
 
 namespace BCUKCompanion.ExpiredMinotaur.Treadmill.Ble;
 
+/// <summary>The outcome of one Control Point write: whether it went out, and what the treadmill answered.</summary>
 public readonly struct ControlPointWriteResult
 {
+    /// <summary>The opcode that was written.</summary>
     public byte OpCode { get; }
+
+    /// <summary>Whether the GATT write itself succeeded.</summary>
     public bool WriteSucceeded { get; }
+
+    /// <summary>Whether the treadmill sent the matching indication before the timeout.</summary>
     public bool IndicationReceived { get; }
+
+    /// <summary>The indication's result code (e.g. <see cref="FtmsConstants.ResultSuccess"/>), or null if none arrived.</summary>
     public byte? ResultCode { get; }
 
+    /// <summary>Creates a result.</summary>
+    /// <param name="opCode">The opcode that was written.</param>
+    /// <param name="writeSucceeded">Whether the GATT write succeeded.</param>
+    /// <param name="indicationReceived">Whether the matching indication arrived.</param>
+    /// <param name="resultCode">The indication's result code, or null if none arrived.</param>
     public ControlPointWriteResult(byte opCode, bool writeSucceeded, bool indicationReceived, byte? resultCode)
     {
         OpCode = opCode;
@@ -21,8 +34,10 @@ public readonly struct ControlPointWriteResult
         ResultCode = resultCode;
     }
 
+    /// <summary>Whether the treadmill confirmed the command with <see cref="FtmsConstants.ResultSuccess"/>.</summary>
     public bool Accepted => IndicationReceived && ResultCode == FtmsConstants.ResultSuccess;
 
+    /// <summary>A one-line summary for the log, e.g. <c>0x02 -> OK</c>.</summary>
     public override string ToString()
     {
         if (!WriteSucceeded) return $"0x{OpCode:X2} -> GATT write failed";
@@ -33,23 +48,40 @@ public readonly struct ControlPointWriteResult
     }
 }
 
-public class FtmsDevice : IDisposable
+/// <summary>
+/// A connected FTMS treadmill over Windows' BLE APIs: finds and connects to it, subscribes to its
+/// data, status and Control Point characteristics, and raises their values as events.
+/// </summary>
+public class FtmsDevice : IControlPointWriter, IDisposable
 {
     private BluetoothLEDevice? _device;
     private GattDeviceService? _fitnessService;
 
+    /// <summary>The Fitness Machine Control Point (0x2AD9), or null if not connected or not found.</summary>
     public GattCharacteristic? ControlPoint { get; private set; }
+
+    /// <summary>The Treadmill Data characteristic (0x2ACD), or null if not connected or not found.</summary>
     public GattCharacteristic? TreadmillData { get; private set; }
+
+    /// <summary>The Fitness Machine Status characteristic (0x2ADA), or null if not connected or not found.</summary>
     public GattCharacteristic? FitnessMachineStatus { get; private set; }
+
+    /// <summary>The Supported Speed Range characteristic (0x2AD4), or null if not connected or not found.</summary>
     public GattCharacteristic? SupportedSpeedRange { get; private set; }
 
-    // Populated during ConnectAsync so callers can surface setup problems
-    // (missing characteristic, rejected CCCD write) that would otherwise
-    // fail silently as "nothing ever happens" with no diagnostic.
+    /// <summary>
+    /// Setup problems from the last <see cref="ConnectAsync"/> (missing characteristic, rejected CCCD
+    /// write), so callers can surface what would otherwise fail silently as "nothing ever happens".
+    /// </summary>
     public List<string> LastConnectWarnings { get; } = new();
 
+    /// <summary>Raised (on a BLE callback thread) with each Treadmill Data notification's raw bytes.</summary>
     public event EventHandler<byte[]>? TreadmillDataReceived;
+
+    /// <summary>Raised (on a BLE callback thread) with each Control Point indication's raw bytes.</summary>
     public event EventHandler<byte[]>? ControlPointIndicationReceived;
+
+    /// <summary>Raised (on a BLE callback thread) with each Fitness Machine Status notification's raw bytes.</summary>
     public event EventHandler<byte[]>? FitnessMachineStatusReceived;
 
     /// <summary>
@@ -67,6 +99,7 @@ public class FtmsDevice : IDisposable
     private TypedEventHandler<BluetoothLEDevice, object>? _connectionStatusHandler;
     private bool _disposed;
 
+    /// <summary>Whether Windows reports the treadmill as connected right now.</summary>
     public bool IsConnected => _device?.ConnectionStatus == BluetoothConnectionStatus.Connected;
 
     /// <summary>
@@ -125,6 +158,12 @@ public class FtmsDevice : IDisposable
         return tcs.Task;
     }
 
+    /// <summary>
+    /// Connects to the treadmill at <paramref name="bluetoothAddress"/>, finds its FTMS characteristics
+    /// and subscribes to them. Problems along the way are added to <see cref="LastConnectWarnings"/>.
+    /// </summary>
+    /// <param name="bluetoothAddress">The address from <see cref="FindFitnessMachineAddressAsync"/>.</param>
+    /// <returns>Whether the device and its Fitness Machine service were found.</returns>
     public async Task<bool> ConnectAsync(ulong bluetoothAddress)
     {
         LastConnectWarnings.Clear();
@@ -196,6 +235,7 @@ public class FtmsDevice : IDisposable
         }
     }
 
+    /// <summary>Looks up one characteristic of the Fitness Machine service, or null if it's missing or the lookup fails.</summary>
     private async Task<GattCharacteristic?> GetCharacteristicAsync(Guid characteristicUuid)
     {
         if (_fitnessService == null) return null;
@@ -205,6 +245,12 @@ public class FtmsDevice : IDisposable
             : null;
     }
 
+    /// <summary>How <see cref="SubscribeAsync"/> subscribes to one characteristic and what it warns about.</summary>
+    /// <param name="CccdMode">Notify or Indicate.</param>
+    /// <param name="StoreHandler">Keeps the handler so <see cref="ReleaseCurrentDevice"/> can detach it.</param>
+    /// <param name="RaiseEvent">Raises this class's event with the value's bytes.</param>
+    /// <param name="NotFoundWarning">The warning to add when the characteristic is missing, or null for none.</param>
+    /// <param name="SubscribeFailWarningFormat">The warning to add when the CCCD write fails; <c>{0}</c> is the status.</param>
     private sealed record SubscriptionSpec(
         GattClientCharacteristicConfigurationDescriptorValue CccdMode,
         Action<TypedEventHandler<GattCharacteristic, GattValueChangedEventArgs>> StoreHandler,
@@ -212,6 +258,7 @@ public class FtmsDevice : IDisposable
         string? NotFoundWarning,
         string SubscribeFailWarningFormat);
 
+    /// <summary>Attaches a value handler to <paramref name="characteristic"/> and enables its notifications or indications.</summary>
     private async Task SubscribeAsync(GattCharacteristic? characteristic, SubscriptionSpec spec)
     {
         if (characteristic == null)
@@ -246,6 +293,8 @@ public class FtmsDevice : IDisposable
     /// exposes INDICATE, WRITE NO RESPONSE — so use a write with response
     /// when the characteristic supports it, and fall back otherwise.
     /// </summary>
+    /// <param name="data">The opcode followed by its parameters.</param>
+    /// <returns>Whether the write went through and, if an indication arrived, its result code.</returns>
     public async Task<ControlPointWriteResult> WriteControlPointAndAwaitAsync(byte[] data)
     {
         byte opcode = data[0];
@@ -317,6 +366,7 @@ public class FtmsDevice : IDisposable
         }
     }
 
+    /// <summary>Copies a WinRT buffer's bytes into an array.</summary>
     private static byte[] ReadBuffer(IBuffer buffer)
     {
         var reader = DataReader.FromBuffer(buffer);
@@ -325,6 +375,7 @@ public class FtmsDevice : IDisposable
         return bytes;
     }
 
+    /// <summary>Detaches every handler and disposes the current device and service, so the instance can connect again.</summary>
     private void ReleaseCurrentDevice()
     {
         if (ControlPoint != null && _controlPointHandler != null)
@@ -344,6 +395,7 @@ public class FtmsDevice : IDisposable
         ControlPoint = TreadmillData = FitnessMachineStatus = SupportedSpeedRange = null;
     }
 
+    /// <summary>Disconnects and drops every subscriber, so a late BLE callback can't reach a torn-down caller.</summary>
     public void Dispose()
     {
         _disposed = true;

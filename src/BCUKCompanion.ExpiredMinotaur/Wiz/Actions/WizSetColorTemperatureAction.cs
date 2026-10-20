@@ -1,28 +1,11 @@
-using System.Text.Json.Serialization;
-
 namespace BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 
-public sealed class WizSetColorTemperatureAction : WizDeviceActionBase
+/// <summary>Turns a tunable-white light on at a set colour temperature.</summary>
+public sealed class WizSetColorTemperatureAction() : WizRangeSettingAction(ColorTemperatureSetting)
 {
+    /// <summary>The <c>kind</c> this action is stored under in actions-config.json.</summary>
     public const string ActionKind = "wiz.setColorTemperature";
-    public const int MinColorTemperatureKelvin = 2200;
-    public const int MaxColorTemperatureKelvin = 6500;
 
-    public int ColorTemperatureKelvin { get; set; }
-
-    [JsonIgnore]
-    public override string Kind => ActionKind;
-
-    protected override bool SupportsPlugs => false;
-
-    protected override string DescribeAction() => $"SetColorTemperature {ColorTemperatureKelvin}K";
-
-    protected override IReadOnlyList<string> ValidateDeviceSpecific(WizDevice device)
-        => ValidateCapabilityAndRange(new CapabilityRangeCheck(
-            device.SupportsColorTemperature,
-            $"{device.Name} does not support color temperature.",
-            ColorTemperatureKelvin, MinColorTemperatureKelvin, MaxColorTemperatureKelvin,
-            $"Color temperature must be between {MinColorTemperatureKelvin}K and {MaxColorTemperatureKelvin}K."));
-
-    protected override object BuildPayload() => StatePayload("temp", ColorTemperatureKelvin);
+    /// <summary>The colour temperature to set, in kelvin (range: <see cref="WizRangeSettingAction.ColorTemperatureSetting"/>).</summary>
+    public int ColorTemperatureKelvin { get => Value; set => Value = value; }
 }

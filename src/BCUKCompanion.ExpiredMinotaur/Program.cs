@@ -9,8 +9,14 @@ using BCUKCompanion.TrayApp.Updates;
 
 namespace BCUKCompanion.ExpiredMinotaur;
 
+/// <summary>The app's entry point.</summary>
 internal static class Program
 {
+    /// <summary>
+    /// The folder (under the user's profile) for this app's settings and tokens, also used for its
+    /// single-instance lock and startup entry. Unique to this app, so it never collides with another
+    /// companion app on the same Windows account.
+    /// </summary>
     internal const string DataFolderName = "BCUKCompanion.ExpiredMinotaur";
 
     /// <summary>

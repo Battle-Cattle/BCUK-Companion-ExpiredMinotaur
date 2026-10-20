@@ -7,29 +7,44 @@ namespace BCUKCompanion.ExpiredMinotaur.Treadmill.Ble;
 /// </summary>
 public class ControlPointService
 {
-    private readonly FtmsDevice _device;
+    private readonly IControlPointWriter _device;
 
     // Defaults match the range confirmed via nRF Connect; TreadmillClient
     // overwrites these after reading the device's actual Supported Speed
     // Range (0x2AD4) on connect, since that range can vary by setup/unit.
+
+    /// <summary>The lowest speed <see cref="SetTargetSpeedAsync"/> accepts, in km/h.</summary>
     public double MinSpeedKmh { get; set; } = FtmsConstants.MinSpeedKmh;
+
+    /// <summary>The highest speed <see cref="SetTargetSpeedAsync"/> accepts, in km/h.</summary>
     public double MaxSpeedKmh { get; set; } = FtmsConstants.MaxSpeedKmh;
 
-    public ControlPointService(FtmsDevice device)
+    /// <summary>Creates a service that sends its commands through <paramref name="device"/>.</summary>
+    /// <param name="device">The Control Point to write to (the connected <see cref="FtmsDevice"/>).</param>
+    public ControlPointService(IControlPointWriter device)
     {
         _device = device;
     }
 
+    /// <summary>Asks the treadmill for control, which it must accept before any other command.</summary>
     public Task<ControlPointWriteResult> RequestControlAsync() =>
         _device.WriteControlPointAndAwaitAsync(new[] { FtmsConstants.Opcode.RequestControl });
 
+    /// <summary>Starts or resumes the belt.</summary>
     public Task<ControlPointWriteResult> StartOrResumeAsync() =>
         _device.WriteControlPointAndAwaitAsync(new[] { FtmsConstants.Opcode.StartOrResume });
 
-    // 0x01 = Stop, 0x02 = Pause, per spec parameter for opcode 0x08.
+    /// <summary>Stops the belt (opcode 0x08 with parameter 0x01 = Stop; 0x02 would be Pause).</summary>
     public Task<ControlPointWriteResult> StopAsync() =>
         _device.WriteControlPointAndAwaitAsync(new byte[] { FtmsConstants.Opcode.StopOrPause, 0x01 });
 
+    /// <summary>
+    /// Sets the target speed, re-requesting control and retrying once if the treadmill reports
+    /// that control was lost.
+    /// </summary>
+    /// <param name="speedKmh">The new target, between <see cref="MinSpeedKmh"/> and <see cref="MaxSpeedKmh"/>.</param>
+    /// <returns>The result of the last write sent.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="speedKmh"/> is outside the supported range.</exception>
     public async Task<ControlPointWriteResult> SetTargetSpeedAsync(double speedKmh)
     {
         if (speedKmh < MinSpeedKmh || speedKmh > MaxSpeedKmh)
