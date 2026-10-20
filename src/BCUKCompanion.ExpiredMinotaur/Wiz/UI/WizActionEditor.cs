@@ -32,7 +32,6 @@ public sealed class WizActionEditor : EventActionEditor
     private static readonly WizActionKindOption SetColorOption = new(WizSetColorAction.ActionKind, "SetColor");
     private static readonly WizActionKindOption SetColorTemperatureOption = new(WizSetColorTemperatureAction.ActionKind, "SetColorTemperature");
 
-    private static readonly WizActionKindOption[] PlugKinds = [TurnOnOption, TurnOffOption, ToggleOption];
     private static readonly WizActionKindOption[] AllWizKinds =
         [TurnOnOption, TurnOffOption, ToggleOption, SetBrightnessOption, SetColorOption, SetColorTemperatureOption];
 
@@ -222,12 +221,8 @@ public sealed class WizActionEditor : EventActionEditor
     /// </summary>
     private void RefreshWizKinds()
     {
-        var device = SelectedDevice;
-        var kinds = device is null
-            ? Array.Empty<WizActionKindOption>()
-            : device.DeviceType == WizDeviceType.Plug
-                ? PlugKinds
-                : AllWizKinds.Where(kind => IsKindSupported(kind.Kind, device)).ToArray();
+        var offered = WizActionKinds.For(SelectedDevice);
+        var kinds = AllWizKinds.Where(option => offered.Contains(option.Kind)).ToArray();
 
         var previouslySelected = wizKindCombo.SelectedItem as WizActionKindOption;
         wizKindCombo.ItemsSource = kinds;
@@ -235,10 +230,6 @@ public sealed class WizActionEditor : EventActionEditor
             ? option
             : kinds.FirstOrDefault();
     }
-
-    /// <summary>Whether <paramref name="device"/> has the capability <paramref name="kind"/> needs.</summary>
-    private static bool IsKindSupported(string kind, WizDevice device)
-        => WizLightSettingAction.ForKind(kind)?.IsSupportedBy(device) ?? true;
 
     /// <summary>Shows only the parameter panel the selected action kind uses.</summary>
     private void RefreshParameterPanelVisibility()
