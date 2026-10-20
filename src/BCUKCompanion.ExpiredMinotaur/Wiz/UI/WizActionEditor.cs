@@ -42,7 +42,7 @@ public sealed class WizActionEditor : EventActionEditor
     private readonly ComboBox wizKindCombo = new() { Margin = new Thickness(0, 0, 0, 8) };
 
     private readonly StackPanel brightnessPanel;
-    private readonly Slider brightnessSlider = new() { Minimum = WizRangeSettingAction.BrightnessSetting.Min, Maximum = WizRangeSettingAction.BrightnessSetting.Max, Value = 100, TickFrequency = 1, IsSnapToTickEnabled = true };
+    private readonly Slider brightnessSlider = new() { Minimum = WizLightSettingAction.BrightnessSetting.Channels[0].Min, Maximum = WizLightSettingAction.BrightnessSetting.Channels[0].Max, Value = 100, TickFrequency = 1, IsSnapToTickEnabled = true };
     private readonly TextBlock brightnessValueText = new();
 
     private readonly StackPanel colorPanel;
@@ -52,7 +52,7 @@ public sealed class WizActionEditor : EventActionEditor
     private readonly Border colorSwatch = new() { Width = 32, Height = 32, BorderBrush = Brushes.Black, BorderThickness = new Thickness(1), Margin = new Thickness(8, 0, 0, 0) };
 
     private readonly StackPanel colorTempPanel;
-    private readonly Slider colorTempSlider = new() { Minimum = WizRangeSettingAction.ColorTemperatureSetting.Min, Maximum = WizRangeSettingAction.ColorTemperatureSetting.Max, Value = 4000, TickFrequency = 100, IsSnapToTickEnabled = true };
+    private readonly Slider colorTempSlider = new() { Minimum = WizLightSettingAction.ColorTemperatureSetting.Channels[0].Min, Maximum = WizLightSettingAction.ColorTemperatureSetting.Channels[0].Max, Value = 4000, TickFrequency = 100, IsSnapToTickEnabled = true };
     private readonly TextBlock colorTempValueText = new();
 
     /// <summary>Creates the editor, preselecting the first device if there is one.</summary>
@@ -237,13 +237,8 @@ public sealed class WizActionEditor : EventActionEditor
     }
 
     /// <summary>Whether <paramref name="device"/> has the capability <paramref name="kind"/> needs.</summary>
-    private static bool IsKindSupported(string kind, WizDevice device) => kind switch
-    {
-        WizSetBrightnessAction.ActionKind => device.SupportsDimming,
-        WizSetColorAction.ActionKind => device.SupportsColor,
-        WizSetColorTemperatureAction.ActionKind => device.SupportsColorTemperature,
-        _ => true,
-    };
+    private static bool IsKindSupported(string kind, WizDevice device)
+        => WizLightSettingAction.ForKind(kind)?.IsSupportedBy(device) ?? true;
 
     /// <summary>Shows only the parameter panel the selected action kind uses.</summary>
     private void RefreshParameterPanelVisibility()

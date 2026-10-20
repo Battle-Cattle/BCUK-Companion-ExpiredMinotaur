@@ -83,28 +83,6 @@ public abstract class WizDeviceActionBase : IEventAction
     protected virtual Task<object> BuildPayloadAsync(WizClient client, WizDevice device, CancellationToken cancellationToken)
         => Task.FromResult(BuildPayload());
 
-    /// <summary>Reports a missing capability and an out-of-range value, each as its own error.</summary>
-    /// <param name="check">The capability, value and range to check, with their messages.</param>
-    protected static List<string> ValidateCapabilityAndRange(CapabilityRangeCheck check)
-    {
-        var errors = new List<string>();
-        if (!check.Supported) errors.Add(check.UnsupportedMessage);
-        if (check.Value < check.Min || check.Value > check.Max) errors.Add(check.OutOfRangeMessage);
-        return errors;
-    }
-
-    /// <summary>
-    /// Builds the "turn on and set one property" shape shared by every Wiz setPilot payload
-    /// that isn't a bare on/off (<see cref="WizSetBrightnessAction"/>,
-    /// <see cref="WizSetColorTemperatureAction"/>, <see cref="WizSetColorAction"/> pass their
-    /// own single property in; <see cref="WizSetColorAction"/> needs three, so it builds its
-    /// own instead).
-    /// </summary>
-    /// <param name="propertyKey">The <c>setPilot</c> property to set, e.g. <c>dimming</c>.</param>
-    /// <param name="propertyValue">Its value.</param>
-    protected static object StatePayload(string propertyKey, object propertyValue)
-        => new Dictionary<string, object> { ["state"] = true, [propertyKey] = propertyValue };
-
     /// <summary>Builds the payload and sends it with <c>setPilot</c>.</summary>
     /// <param name="client">The client to send with.</param>
     /// <param name="device">The target device.</param>
@@ -115,14 +93,4 @@ public abstract class WizDeviceActionBase : IEventAction
         var payload = await BuildPayloadAsync(client, device, cancellationToken).ConfigureAwait(false);
         return await client.SetPilotAsync(device.IpAddress, payload, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
-
-    /// <summary>What <see cref="ValidateCapabilityAndRange"/> checks.</summary>
-    /// <param name="Supported">Whether the device has the capability.</param>
-    /// <param name="UnsupportedMessage">The error when it doesn't.</param>
-    /// <param name="Value">The value the action sets.</param>
-    /// <param name="Min">The lowest allowed value.</param>
-    /// <param name="Max">The highest allowed value.</param>
-    /// <param name="OutOfRangeMessage">The error when the value is outside Min–Max.</param>
-    protected readonly record struct CapabilityRangeCheck(
-        bool Supported, string UnsupportedMessage, int Value, int Min, int Max, string OutOfRangeMessage);
 }
