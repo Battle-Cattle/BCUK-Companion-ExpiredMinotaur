@@ -451,11 +451,12 @@ public sealed class TreadmillClient : IDisposable
     }
 
     /// <summary>
-    /// One keep-alive tick. Proven load-bearing in the test app, not just watchdog avoidance: a single
-    /// SetTargetSpeed write doesn't reliably stick without reinforcement. Re-sending the target
-    /// blindly also undid any speed change made on the treadmill's own console within 2s, so
-    /// each tick first checks the belt (see <see cref="TreadmillSpeedFollower"/>): it skips the write while
-    /// the console is changing or has stopped the belt, and adopts a console speed once it settles.
+    /// One keep-alive tick. Proven load-bearing in the test app: a single SetTargetSpeed write doesn't
+    /// reliably stick without reinforcement while the belt ramps to it. Re-sending the target blindly
+    /// also undid any speed change made on the treadmill's own console within 2s, and writing every 2s
+    /// even at the target stopped the console updating its time and distance. So each tick first
+    /// checks the belt (see <see cref="TreadmillSpeedFollower"/>): it only writes while the belt is
+    /// ramping to this app's target (or its speed is unknown), and adopts a console speed once it settles.
     /// </summary>
     private async Task SendKeepAliveAsync()
     {
@@ -480,10 +481,11 @@ public sealed class TreadmillClient : IDisposable
                 case KeepAliveAction.Skip:
                     return;
                 case KeepAliveAction.AdoptBeltSpeed when belt is not null:
+                    // The belt is already at this speed, so there's nothing to send.
                     TargetSpeedKmh = SnapAndClamp(belt.Kmh);
                     speedFollower.OnBeltSpeedAdopted();
-                    RaiseStatus($"Speed changed on the treadmill — now holding {TargetSpeedKmh:0.0} km/h.");
-                    break;
+                    RaiseStatus($"Speed changed on the treadmill — now following {TargetSpeedKmh:0.0} km/h.");
+                    return;
             }
 
             await controlPointService.SetTargetSpeedAsync(TargetSpeedKmh).ConfigureAwait(false);

@@ -3,13 +3,16 @@ namespace BCUKCompanion.ExpiredMinotaur.Treadmill;
 /// <summary>What the keep-alive should do on one tick (see <see cref="TreadmillSpeedFollower.Decide"/>).</summary>
 internal enum KeepAliveAction
 {
-    /// <summary>Re-send the current target speed, as the keep-alive always has.</summary>
+    /// <summary>Re-send the current target speed: the belt is still ramping to it, or its speed is unknown.</summary>
     SendTarget,
 
-    /// <summary>Send nothing this tick: the belt is being changed (or was stopped) on the treadmill itself.</summary>
+    /// <summary>
+    /// Send nothing this tick: the belt is already at the target, or is being changed (or was stopped)
+    /// on the treadmill itself.
+    /// </summary>
     Skip,
 
-    /// <summary>The belt settled at a speed set on the treadmill itself: make that the target, then send it.</summary>
+    /// <summary>The belt settled at a speed set on the treadmill itself: make that the target, without sending it.</summary>
     AdoptBeltSpeed,
 }
 
@@ -19,8 +22,10 @@ internal sealed record BeltReading(double Kmh, DateTime At);
 /// <summary>
 /// Tells a speed set on the treadmill's own console apart from the belt still ramping to a target
 /// this app sent, so the keep-alive follows the console instead of dragging the belt back.
-/// The keep-alive has to keep re-sending a target (one SetTargetSpeed write doesn't reliably stick
-/// on its own), which used to undo any console change within 2 seconds.
+/// The keep-alive re-sends a target while the belt ramps to it (one SetTargetSpeed write doesn't
+/// reliably stick on its own), which used to undo any console change within 2 seconds. Once the belt
+/// is at the target it sends nothing: FTMS keeps a target until it's changed, and a write every 2s
+/// stopped the treadmill's own console updating its time and distance.
 /// Uses only the speeds and times it's given, with no BLE dependency, so it can be tested on its own.
 /// </summary>
 internal sealed class TreadmillSpeedFollower
@@ -96,8 +101,8 @@ internal sealed class TreadmillSpeedFollower
         if (reading.At == lastReadingAt)
         {
             // No new reading since the last tick: nothing has changed, so neither the history nor the
-            // decision moves on (an adopted speed is the target now, so it's sent).
-            return Math.Abs(reading.Kmh - targetKmh) <= stepKmh / 2 || lastAction == KeepAliveAction.SendTarget
+            // decision moves on (an adopted speed is the target now, so it's left alone).
+            return Math.Abs(reading.Kmh - targetKmh) > stepKmh / 2 && lastAction == KeepAliveAction.SendTarget
                 ? KeepAliveAction.SendTarget
                 : KeepAliveAction.Skip;
         }
@@ -121,9 +126,9 @@ internal sealed class TreadmillSpeedFollower
 
         if (distance <= tolerance)
         {
-            // Back at the target, however it got there.
+            // At the target, however it got there: the treadmill holds it without being told again.
             consoleChangeSeen = false;
-            return KeepAliveAction.SendTarget;
+            return KeepAliveAction.Skip;
         }
 
         if (now < ownChangeUntil || converging)
