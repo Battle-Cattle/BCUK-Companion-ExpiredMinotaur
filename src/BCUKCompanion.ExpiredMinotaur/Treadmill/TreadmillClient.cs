@@ -53,9 +53,13 @@ public sealed class TreadmillClient : IDisposable
     // Only used under writeLock.
     private readonly TreadmillSpeedFollower speedFollower = new();
 
-    // When CurrentSpeedKmh was last reported, as DateTime.UtcNow ticks (0 = never). Written on a
-    // BLE callback thread, read under writeLock, hence Interlocked.
-    private long currentSpeedAtTicks;
+    // The belt's last reported speed and when it arrived (null = none since connecting). One
+    // immutable reading, so the speed and its time are always read together. Written on a BLE
+    // callback thread, read under writeLock, hence Volatile.
+    private SpeedReading? lastSpeedReading;
+
+    /// <summary>A belt speed the treadmill reported, and when (UTC) it arrived.</summary>
+    private sealed record SpeedReading(double Kmh, DateTime At);
 
     /// <summary>
     /// Fires on whatever thread triggered it (a BLE callback thread, or the keep-alive
@@ -93,7 +97,7 @@ public sealed class TreadmillClient : IDisposable
                 if (snapshot.InstantaneousSpeedKmh is { } speed)
                 {
                     CurrentSpeedKmh = speed;
-                    Interlocked.Exchange(ref currentSpeedAtTicks, DateTime.UtcNow.Ticks);
+                    Volatile.Write(ref lastSpeedReading, new SpeedReading(speed, DateTime.UtcNow));
                     firstSpeedReading?.TrySetResult(speed);
                 }
             }
@@ -348,7 +352,7 @@ public sealed class TreadmillClient : IDisposable
             controlPointService = null;
             IsConnected = false;
             CurrentSpeedKmh = 0;
-            Interlocked.Exchange(ref currentSpeedAtTicks, 0);
+            Volatile.Write(ref lastSpeedReading, null);
 
             device.Dispose();
             device = new FtmsDevice();
@@ -403,8 +407,10 @@ public sealed class TreadmillClient : IDisposable
             }
 
             var now = DateTime.UtcNow;
-            var fromKmh = speedFollower.BeltOverridesTarget(TargetSpeedKmh, RecentBeltSpeed(now), MinSpeedKmh, SpeedStepKmh, now)
-                ? CurrentSpeedKmh
+            // Read once, so the speed nudged from is the one that was classified.
+            var beltKmh = RecentBeltSpeed(now);
+            var fromKmh = beltKmh is { } belt && speedFollower.BeltOverridesTarget(TargetSpeedKmh, belt, MinSpeedKmh, SpeedStepKmh, now)
+                ? belt
                 : TargetSpeedKmh;
             var snapped = SnapAndClamp(fromKmh + deltaKmh);
             var result = await controlPointService.SetTargetSpeedAsync(snapped).ConfigureAwait(false);
@@ -434,8 +440,8 @@ public sealed class TreadmillClient : IDisposable
     /// <summary>The belt's last reported speed, or null if there's no reading from the last <see cref="SpeedReadingMaxAge"/>.</summary>
     private double? RecentBeltSpeed(DateTime now)
     {
-        long ticks = Interlocked.Read(ref currentSpeedAtTicks);
-        return ticks != 0 && now - new DateTime(ticks, DateTimeKind.Utc) <= SpeedReadingMaxAge ? CurrentSpeedKmh : null;
+        var reading = Volatile.Read(ref lastSpeedReading);
+        return reading is not null && now - reading.At <= SpeedReadingMaxAge ? reading.Kmh : null;
     }
 
     /// <summary>Rounds a speed to the treadmill's step and clamps it to its supported range.</summary>
@@ -468,12 +474,14 @@ public sealed class TreadmillClient : IDisposable
             }
 
             var now = DateTime.UtcNow;
-            switch (speedFollower.Decide(TargetSpeedKmh, RecentBeltSpeed(now), MinSpeedKmh, SpeedStepKmh, now))
+            // Read once, so the speed adopted is the one Decide classified.
+            var beltKmh = RecentBeltSpeed(now);
+            switch (speedFollower.Decide(TargetSpeedKmh, beltKmh, MinSpeedKmh, SpeedStepKmh, now))
             {
                 case KeepAliveAction.Skip:
                     return;
-                case KeepAliveAction.AdoptBeltSpeed:
-                    TargetSpeedKmh = SnapAndClamp(CurrentSpeedKmh);
+                case KeepAliveAction.AdoptBeltSpeed when beltKmh is { } adopted:
+                    TargetSpeedKmh = SnapAndClamp(adopted);
                     speedFollower.OnBeltSpeedAdopted();
                     RaiseStatus($"Speed changed on the treadmill — now holding {TargetSpeedKmh:0.0} km/h.");
                     break;
