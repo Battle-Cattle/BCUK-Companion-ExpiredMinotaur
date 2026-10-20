@@ -1,9 +1,7 @@
-using System.Text.Json.Serialization;
-
 namespace BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 
 /// <summary>Turns a tunable-white light on at a set colour temperature.</summary>
-public sealed class WizSetColorTemperatureAction : WizRangeSettingAction
+public sealed class WizSetColorTemperatureAction() : WizRangeSettingAction(Temperature)
 {
     /// <summary>The <c>kind</c> this action is stored under in actions-config.json.</summary>
     public const string ActionKind = "wiz.setColorTemperature";
@@ -15,23 +13,11 @@ public sealed class WizSetColorTemperatureAction : WizRangeSettingAction
     public const int MaxColorTemperatureKelvin = 6500;
 
     private static readonly RangeSetting Temperature = new(
-        "temp", MinColorTemperatureKelvin, MaxColorTemperatureKelvin, device => device.SupportsColorTemperature,
+        ActionKind, "temp", MinColorTemperatureKelvin, MaxColorTemperatureKelvin, device => device.SupportsColorTemperature,
         "color temperature",
-        $"Color temperature must be between {MinColorTemperatureKelvin}K and {MaxColorTemperatureKelvin}K.");
+        $"Color temperature must be between {MinColorTemperatureKelvin}K and {MaxColorTemperatureKelvin}K.",
+        value => $"SetColorTemperature {value}K");
 
     /// <summary>The colour temperature to set, in kelvin (<see cref="MinColorTemperatureKelvin"/>–<see cref="MaxColorTemperatureKelvin"/>).</summary>
-    public int ColorTemperatureKelvin { get; set; }
-
-    /// <inheritdoc/>
-    [JsonIgnore]
-    public override string Kind => ActionKind;
-
-    /// <inheritdoc/>
-    protected override RangeSetting Setting => Temperature;
-
-    /// <inheritdoc/>
-    protected override int Value => ColorTemperatureKelvin;
-
-    /// <inheritdoc/>
-    protected override string DescribeAction() => $"SetColorTemperature {ColorTemperatureKelvin}K";
+    public int ColorTemperatureKelvin { get => Value; set => Value = value; }
 }

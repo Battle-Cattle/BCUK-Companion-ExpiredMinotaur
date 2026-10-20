@@ -1,9 +1,7 @@
-using System.Text.Json.Serialization;
-
 namespace BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 
 /// <summary>Turns a dimmable light on at a set brightness.</summary>
-public sealed class WizSetBrightnessAction : WizRangeSettingAction
+public sealed class WizSetBrightnessAction() : WizRangeSettingAction(Dimming)
 {
     /// <summary>The <c>kind</c> this action is stored under in actions-config.json.</summary>
     public const string ActionKind = "wiz.setBrightness";
@@ -15,22 +13,9 @@ public sealed class WizSetBrightnessAction : WizRangeSettingAction
     public const int MaxBrightness = 100;
 
     private static readonly RangeSetting Dimming = new(
-        "dimming", MinBrightness, MaxBrightness, device => device.SupportsDimming,
-        "brightness control", $"Brightness must be between {MinBrightness} and {MaxBrightness}.");
+        ActionKind, "dimming", MinBrightness, MaxBrightness, device => device.SupportsDimming, "brightness control",
+        $"Brightness must be between {MinBrightness} and {MaxBrightness}.", value => $"SetBrightness {value}%");
 
     /// <summary>The brightness to set, in percent (<see cref="MinBrightness"/>–<see cref="MaxBrightness"/>).</summary>
-    public int Brightness { get; set; }
-
-    /// <inheritdoc/>
-    [JsonIgnore]
-    public override string Kind => ActionKind;
-
-    /// <inheritdoc/>
-    protected override RangeSetting Setting => Dimming;
-
-    /// <inheritdoc/>
-    protected override int Value => Brightness;
-
-    /// <inheritdoc/>
-    protected override string DescribeAction() => $"SetBrightness {Brightness}%";
+    public int Brightness { get => Value; set => Value = value; }
 }
