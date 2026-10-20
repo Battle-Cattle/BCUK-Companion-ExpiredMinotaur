@@ -30,7 +30,7 @@ public class ControlPointService
     public Task<ControlPointWriteResult> StopAsync() =>
         _device.WriteControlPointAndAwaitAsync(new byte[] { FtmsConstants.Opcode.StopOrPause, 0x01 });
 
-    public Task<ControlPointWriteResult> SetTargetSpeedAsync(double speedKmh)
+    public async Task<ControlPointWriteResult> SetTargetSpeedAsync(double speedKmh)
     {
         if (speedKmh < MinSpeedKmh || speedKmh > MaxSpeedKmh)
             throw new ArgumentOutOfRangeException(nameof(speedKmh),
@@ -39,7 +39,20 @@ public class ControlPointService
         ushort raw = (ushort)Math.Round(speedKmh * 100);
         byte lo = (byte)(raw & 0xFF);
         byte hi = (byte)((raw >> 8) & 0xFF);
+        var command = new[] { FtmsConstants.Opcode.SetTargetSpeed, lo, hi };
 
-        return _device.WriteControlPointAndAwaitAsync(new[] { FtmsConstants.Opcode.SetTargetSpeed, lo, hi });
+        var result = await _device.WriteControlPointAndAwaitAsync(command);
+
+        // Per FTMS, the server revokes control after a Reset or when it sends Control
+        // Permission Lost (Fitness Machine Status 0xFF), e.g. once its own console takes
+        // over; every later write then fails with Control Not Permitted until the client
+        // requests control again. Re-request once and retry rather than failing forever.
+        if (result.IndicationReceived && result.ResultCode == FtmsConstants.ResultControlNotPermitted
+            && (await RequestControlAsync()).Accepted)
+        {
+            result = await _device.WriteControlPointAndAwaitAsync(command);
+        }
+
+        return result;
     }
 }
