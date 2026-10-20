@@ -4,13 +4,23 @@ namespace BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 
 /// <summary>
 /// Shared shape for the Wiz actions that turn a light on at one numeric setting in a fixed range
-/// (<see cref="WizSetBrightnessAction"/>, <see cref="WizSetColorTemperatureAction"/>). A subclass
-/// only supplies its <see cref="RangeSetting"/> and exposes <see cref="Value"/> under its own
-/// JSON property name.
+/// (<see cref="WizSetBrightnessAction"/>, <see cref="WizSetColorTemperatureAction"/>). Each setting
+/// is defined here; a subclass only picks one and exposes <see cref="Value"/> under its own JSON
+/// property name.
 /// </summary>
 /// <param name="setting">Which setting the action sets.</param>
 public abstract class WizRangeSettingAction(WizRangeSettingAction.RangeSetting setting) : WizDeviceActionBase
 {
+    /// <summary>Brightness, in percent: the light must support dimming.</summary>
+    public static readonly RangeSetting BrightnessSetting = new(
+        WizSetBrightnessAction.ActionKind, "dimming", 1, 100, device => device.SupportsDimming, "brightness control",
+        "Brightness must be between 1 and 100.", value => $"SetBrightness {value}%");
+
+    /// <summary>Colour temperature, in kelvin: the light must support tunable white.</summary>
+    public static readonly RangeSetting ColorTemperatureSetting = new(
+        WizSetColorTemperatureAction.ActionKind, "temp", 2200, 6500, device => device.SupportsColorTemperature,
+        "color temperature", "Color temperature must be between 2200K and 6500K.", value => $"SetColorTemperature {value}K");
+
     /// <inheritdoc/>
     [JsonIgnore]
     public override string Kind => setting.Kind;
