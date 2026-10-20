@@ -77,6 +77,7 @@ public sealed class TreadmillClient : IDisposable
         AttachDeviceEvents(device);
     }
 
+    /// <summary>Subscribes to a device's disconnect and speed-reading events.</summary>
     private void AttachDeviceEvents(FtmsDevice attachedDevice)
     {
         // Without this the client kept reporting itself connected after the treadmill was powered
@@ -437,17 +438,20 @@ public sealed class TreadmillClient : IDisposable
         return ticks != 0 && now - new DateTime(ticks, DateTimeKind.Utc) <= SpeedReadingMaxAge ? CurrentSpeedKmh : null;
     }
 
+    /// <summary>Rounds a speed to the treadmill's step and clamps it to its supported range.</summary>
     private double SnapAndClamp(double speedKmh)
     {
         var snapped = Math.Round(speedKmh / SpeedStepKmh) * SpeedStepKmh;
         return Math.Clamp(snapped, MinSpeedKmh, MaxSpeedKmh);
     }
 
-    // Proven load-bearing in the test app, not just watchdog avoidance: a single
-    // SetTargetSpeed write doesn't reliably stick without reinforcement. Re-sending the target
-    // blindly also undid any speed change made on the treadmill's own console within 2s, so
-    // each tick first checks the belt (see TreadmillSpeedFollower): it skips the write while
-    // the console is changing or has stopped the belt, and adopts a console speed once it settles.
+    /// <summary>
+    /// One keep-alive tick. Proven load-bearing in the test app, not just watchdog avoidance: a single
+    /// SetTargetSpeed write doesn't reliably stick without reinforcement. Re-sending the target
+    /// blindly also undid any speed change made on the treadmill's own console within 2s, so
+    /// each tick first checks the belt (see <see cref="TreadmillSpeedFollower"/>): it skips the write while
+    /// the console is changing or has stopped the belt, and adopts a console speed once it settles.
+    /// </summary>
     private async Task SendKeepAliveAsync()
     {
         if (!IsConnected || controlPointService is null)
@@ -510,6 +514,7 @@ public sealed class TreadmillClient : IDisposable
         device.Dispose();
     }
 
+    /// <summary>Raises <see cref="StatusChanged"/> with a user-facing status line.</summary>
     private void RaiseStatus(string message) => StatusChanged?.Invoke(this, message);
 
     public void Dispose()

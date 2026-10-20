@@ -37,10 +37,15 @@ internal sealed class TreadmillSpeedFollower
     private double lastDistanceKmh = double.PositiveInfinity;
     private int steadyTicks;
 
+    // Set once the belt is seen off target outside this app's own change, so a later move towards
+    // the old target (a console restart, a console reversal) isn't mistaken for this app's ramp.
+    private bool consoleChangeSeen;
+
     /// <summary>Call whenever this app sets the target (connect, an accepted nudge), so the belt's ramp to it isn't mistaken for a console change.</summary>
     public void OnOwnTargetSet(DateTime now)
     {
         ownChangeUntil = now + OwnChangeGrace;
+        consoleChangeSeen = false;
         ResetTracking();
     }
 
@@ -71,17 +76,27 @@ internal sealed class TreadmillSpeedFollower
 
         double tolerance = stepKmh / 2;
         double distance = Math.Abs(belt - targetKmh);
-        bool converging = distance < lastDistanceKmh - tolerance;
+        // Only a belt already being tracked, with no console change seen since, can be converging:
+        // the first reading after a gap has nothing to compare against.
+        bool converging = !consoleChangeSeen && lastBeltKmh is not null && distance < lastDistanceKmh - tolerance;
         steadyTicks = lastBeltKmh is { } previous && Math.Abs(belt - previous) <= tolerance ? steadyTicks + 1 : 0;
         lastBeltKmh = belt;
         lastDistanceKmh = distance;
 
-        if (distance <= tolerance || now < ownChangeUntil || converging)
+        if (distance <= tolerance)
         {
-            // At the target, or still ramping to a target this app set.
+            // Back at the target, however it got there.
+            consoleChangeSeen = false;
             return KeepAliveAction.SendTarget;
         }
 
+        if (now < ownChangeUntil || converging)
+        {
+            // Still ramping to a target this app set.
+            return KeepAliveAction.SendTarget;
+        }
+
+        consoleChangeSeen = true;
         if (belt < minKmh)
         {
             // Stopped (or slowed below range) on the treadmill: don't fight it.
@@ -92,8 +107,13 @@ internal sealed class TreadmillSpeedFollower
     }
 
     /// <summary>Call after adopting the belt's speed as the target, so tracking starts again from it.</summary>
-    public void OnBeltSpeedAdopted() => ResetTracking();
+    public void OnBeltSpeedAdopted()
+    {
+        consoleChangeSeen = false;
+        ResetTracking();
+    }
 
+    /// <summary>Forgets the belt history, so the next reading starts tracking afresh (it can't count as converging or steady).</summary>
     private void ResetTracking()
     {
         lastBeltKmh = null;
