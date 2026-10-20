@@ -1,3 +1,6 @@
+using System.Reflection;
+using System.Text.Json;
+using BCUKCompanion.Core.Actions;
 using BCUKCompanion.ExpiredMinotaur.Wiz;
 using BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
 using Xunit;
@@ -109,6 +112,42 @@ public sealed class WizActionTests
         var action = new WizTurnOnAction { DeviceId = Guid.NewGuid() };
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => action.ExecuteAsync(Context, CancellationToken.None));
+    }
+
+    private static string Payload(WizDeviceActionBase action) => JsonSerializer.Serialize(
+        typeof(WizDeviceActionBase).GetMethod("BuildPayload", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(action, null));
+
+    [Fact]
+    public void BuildPayload_SendsTheSetPilotParamsEachActionNeeds()
+    {
+        Assert.Equal("""{"state":true,"dimming":40}""", Payload(new WizSetBrightnessAction { Brightness = 40 }));
+        Assert.Equal("""{"state":true,"temp":2700}""", Payload(new WizSetColorTemperatureAction { ColorTemperatureKelvin = 2700 }));
+        Assert.Equal("""{"state":true,"r":1,"g":2,"b":3}""", Payload(new WizSetColorAction { R = 1, G = 2, B = 3 }));
+        Assert.Equal("""{"state":true}""", Payload(new WizTurnOnAction()));
+        Assert.Equal("""{"state":false}""", Payload(new WizTurnOffAction()));
+    }
+
+    [Fact]
+    public void Serialization_KeepsTheSavedPropertyNames()
+    {
+        var registry = new EventActionTypeRegistry();
+        registry.Register<WizSetBrightnessAction>(WizSetBrightnessAction.ActionKind);
+        registry.Register<WizSetColorTemperatureAction>(WizSetColorTemperatureAction.ActionKind);
+        var options = new JsonSerializerOptions { Converters = { new EventActionJsonConverter(registry) } };
+        IEventAction[] actions =
+        [
+            new WizSetBrightnessAction { DeviceId = ColorLight.Id, Brightness = 40 },
+            new WizSetColorTemperatureAction { DeviceId = ColorLight.Id, ColorTemperatureKelvin = 2700 },
+        ];
+
+        string json = JsonSerializer.Serialize(actions, options);
+        var roundTripped = JsonSerializer.Deserialize<IEventAction[]>(json, options)!;
+
+        Assert.Contains("\"Brightness\":40", json);
+        Assert.Contains("\"ColorTemperatureKelvin\":2700", json);
+        Assert.Equal(40, Assert.IsType<WizSetBrightnessAction>(roundTripped[0]).Brightness);
+        Assert.Equal(2700, Assert.IsType<WizSetColorTemperatureAction>(roundTripped[1]).ColorTemperatureKelvin);
+        Assert.Equal(ColorLight.Id, Assert.IsType<WizSetColorTemperatureAction>(roundTripped[1]).DeviceId);
     }
 
     [Fact]
