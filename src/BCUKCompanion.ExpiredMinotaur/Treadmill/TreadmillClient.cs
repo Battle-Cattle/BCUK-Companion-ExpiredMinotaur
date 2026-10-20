@@ -13,6 +13,10 @@ public sealed class TreadmillClient : IDisposable
     private static readonly TimeSpan FirstReadingTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan KeepAliveInterval = TimeSpan.FromSeconds(2);
 
+    // A speed reading older than this is treated as unknown, so the keep-alive falls back to
+    // re-sending the target rather than reacting to a belt speed it can no longer see.
+    private static readonly TimeSpan SpeedReadingMaxAge = TimeSpan.FromSeconds(5);
+
     // Guards every Control Point write (Nudge and keep-alive both go through it) AND the
     // full Connect/Disconnect lifecycle. A redemption-triggered Nudge can land at any moment
     // concurrent with the keep-alive tick; without serialization, two overlapping
@@ -45,6 +49,15 @@ public sealed class TreadmillClient : IDisposable
     private ControlPointService? controlPointService;
     private TaskCompletionSource<double>? firstSpeedReading;
 
+    // Follows a speed set on the treadmill's own console instead of the keep-alive reverting it.
+    // Only used under writeLock.
+    private readonly TreadmillSpeedFollower speedFollower = new();
+
+    // The belt's last reported speed and when it arrived (null = none since connecting). One
+    // immutable reading, so the speed and its time are always read together. Written on a BLE
+    // callback thread, read under writeLock, hence Volatile.
+    private BeltReading? lastSpeedReading;
+
     /// <summary>
     /// Fires on whatever thread triggered it (a BLE callback thread, or the keep-alive
     /// timer's thread-pool thread) — any WPF subscriber must marshal via Dispatcher.Invoke
@@ -65,6 +78,7 @@ public sealed class TreadmillClient : IDisposable
         AttachDeviceEvents(device);
     }
 
+    /// <summary>Subscribes to a device's disconnect and speed-reading events.</summary>
     private void AttachDeviceEvents(FtmsDevice attachedDevice)
     {
         // Without this the client kept reporting itself connected after the treadmill was powered
@@ -80,6 +94,7 @@ public sealed class TreadmillClient : IDisposable
                 if (snapshot.InstantaneousSpeedKmh is { } speed)
                 {
                     CurrentSpeedKmh = speed;
+                    Volatile.Write(ref lastSpeedReading, new BeltReading(speed, DateTime.UtcNow));
                     firstSpeedReading?.TrySetResult(speed);
                 }
             }
@@ -291,6 +306,9 @@ public sealed class TreadmillClient : IDisposable
             RaiseStatus("No speed reading within 3s of connecting — the first Nudge may change speed unexpectedly.");
         }
         firstSpeedReading = null;
+        // No grace period: nothing was sent, so a belt that's elsewhere (e.g. the first reading
+        // timed out and the target fell back to the minimum) is followed, not pulled to the target.
+        speedFollower.OnConnected();
 
         return true;
     }
@@ -333,6 +351,7 @@ public sealed class TreadmillClient : IDisposable
             controlPointService = null;
             IsConnected = false;
             CurrentSpeedKmh = 0;
+            Volatile.Write(ref lastSpeedReading, null);
 
             device.Dispose();
             device = new FtmsDevice();
@@ -351,8 +370,9 @@ public sealed class TreadmillClient : IDisposable
     /// Clamps <see cref="TargetSpeedKmh"/> + <paramref name="deltaKmh"/> into
     /// [<see cref="MinSpeedKmh"/>, <see cref="MaxSpeedKmh"/>], snaps to
     /// <see cref="SpeedStepKmh"/>, sends SetTargetSpeed, and only updates the stored target
-    /// if the write was accepted. Deliberately never sends Start — if the treadmill isn't
-    /// already moving, nudging simply won't move a stopped belt.
+    /// if the write was accepted. If the belt is running at a speed set on the treadmill's own
+    /// console, the nudge starts from that speed instead of the stale target. Deliberately never
+    /// sends Start — if the treadmill isn't already moving, nudging simply won't move a stopped belt.
     /// </summary>
     public async Task<bool> NudgeSpeedAsync(double deltaKmh, CancellationToken cancellationToken = default)
     {
@@ -385,11 +405,18 @@ public sealed class TreadmillClient : IDisposable
                 return false;
             }
 
-            var snapped = SnapAndClamp(TargetSpeedKmh + deltaKmh);
+            var now = DateTime.UtcNow;
+            // Read once, so the speed nudged from is the one that was classified.
+            var belt = RecentBeltReading(now);
+            var fromKmh = belt is not null && speedFollower.BeltOverridesTarget(TargetSpeedKmh, belt.Kmh, MinSpeedKmh, SpeedStepKmh, now)
+                ? belt.Kmh
+                : TargetSpeedKmh;
+            var snapped = SnapAndClamp(fromKmh + deltaKmh);
             var result = await controlPointService.SetTargetSpeedAsync(snapped).ConfigureAwait(false);
             if (result.Accepted)
             {
                 TargetSpeedKmh = snapped;
+                speedFollower.OnOwnTargetSet(DateTime.UtcNow);
             }
             else
             {
@@ -409,14 +436,27 @@ public sealed class TreadmillClient : IDisposable
         }
     }
 
+    /// <summary>The belt's last reading, or null if there's none from the last <see cref="SpeedReadingMaxAge"/>.</summary>
+    private BeltReading? RecentBeltReading(DateTime now)
+    {
+        var reading = Volatile.Read(ref lastSpeedReading);
+        return reading is not null && now - reading.At <= SpeedReadingMaxAge ? reading : null;
+    }
+
+    /// <summary>Rounds a speed to the treadmill's step and clamps it to its supported range.</summary>
     private double SnapAndClamp(double speedKmh)
     {
         var snapped = Math.Round(speedKmh / SpeedStepKmh) * SpeedStepKmh;
         return Math.Clamp(snapped, MinSpeedKmh, MaxSpeedKmh);
     }
 
-    // Proven load-bearing in the test app, not just watchdog avoidance: a single
-    // SetTargetSpeed write doesn't reliably stick without reinforcement.
+    /// <summary>
+    /// One keep-alive tick. Proven load-bearing in the test app, not just watchdog avoidance: a single
+    /// SetTargetSpeed write doesn't reliably stick without reinforcement. Re-sending the target
+    /// blindly also undid any speed change made on the treadmill's own console within 2s, so
+    /// each tick first checks the belt (see <see cref="TreadmillSpeedFollower"/>): it skips the write while
+    /// the console is changing or has stopped the belt, and adopts a console speed once it settles.
+    /// </summary>
     private async Task SendKeepAliveAsync()
     {
         if (!IsConnected || controlPointService is null)
@@ -430,6 +470,20 @@ public sealed class TreadmillClient : IDisposable
             if (Volatile.Read(ref disposed) != 0 || !IsConnected || controlPointService is null)
             {
                 return;
+            }
+
+            var now = DateTime.UtcNow;
+            // Read once, so the speed adopted is the one Decide classified.
+            var belt = RecentBeltReading(now);
+            switch (speedFollower.Decide(TargetSpeedKmh, belt, MinSpeedKmh, SpeedStepKmh, now))
+            {
+                case KeepAliveAction.Skip:
+                    return;
+                case KeepAliveAction.AdoptBeltSpeed when belt is not null:
+                    TargetSpeedKmh = SnapAndClamp(belt.Kmh);
+                    speedFollower.OnBeltSpeedAdopted();
+                    RaiseStatus($"Speed changed on the treadmill — now holding {TargetSpeedKmh:0.0} km/h.");
+                    break;
             }
 
             await controlPointService.SetTargetSpeedAsync(TargetSpeedKmh).ConfigureAwait(false);
@@ -467,6 +521,7 @@ public sealed class TreadmillClient : IDisposable
         device.Dispose();
     }
 
+    /// <summary>Raises <see cref="StatusChanged"/> with a user-facing status line.</summary>
     private void RaiseStatus(string message) => StatusChanged?.Invoke(this, message);
 
     public void Dispose()
