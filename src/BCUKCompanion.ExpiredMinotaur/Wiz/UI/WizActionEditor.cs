@@ -16,8 +16,12 @@ namespace BCUKCompanion.ExpiredMinotaur.Wiz.UI;
 /// </summary>
 public sealed class WizActionEditor : EventActionEditor
 {
+    /// <summary>One entry in the action-kind picker.</summary>
+    /// <param name="Kind">The action kind it creates.</param>
+    /// <param name="DisplayName">The name shown in the picker.</param>
     private sealed record WizActionKindOption(string Kind, string DisplayName)
     {
+        /// <summary>The name shown in the picker.</summary>
         public override string ToString() => DisplayName;
     }
 

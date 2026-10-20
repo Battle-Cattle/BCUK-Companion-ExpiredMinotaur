@@ -11,6 +11,9 @@ namespace BCUKCompanion.ExpiredMinotaur;
 /// </summary>
 public sealed record ActionsConfig : IEventActionMappingsConfig
 {
+    /// <summary>The WiZ lights and plugs the Wiz actions can target.</summary>
     public List<WizDevice> Devices { get; init; } = [];
+
+    /// <summary>Which bot events run which actions.</summary>
     public List<EventActionMapping> Mappings { get; init; } = [];
 }

@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-3C95EB7DD1D2}") = "BCUKCompanion.ExpiredMinotaur", "src\BCUKCompanion.ExpiredMinotaur\BCUKCompanion.ExpiredMinotaur.csproj", "{5A4998F1-1E50-4DAC-916F-578BCC877A6D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BCUKCompanion.ExpiredMinotaur.Tests", "tests\BCUKCompanion.ExpiredMinotaur.Tests\BCUKCompanion.ExpiredMinotaur.Tests.csproj", "{1044A84C-B3C5-4ECA-B65F-0F762581A0B2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{5A4998F1-1E50-4DAC-916F-578BCC877A6D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5A4998F1-1E50-4DAC-916F-578BCC877A6D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5A4998F1-1E50-4DAC-916F-578BCC877A6D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1044A84C-B3C5-4ECA-B65F-0F762581A0B2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1044A84C-B3C5-4ECA-B65F-0F762581A0B2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1044A84C-B3C5-4ECA-B65F-0F762581A0B2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1044A84C-B3C5-4ECA-B65F-0F762581A0B2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

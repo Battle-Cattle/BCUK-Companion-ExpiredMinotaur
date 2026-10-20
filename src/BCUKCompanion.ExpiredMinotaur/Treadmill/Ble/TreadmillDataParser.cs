@@ -1,15 +1,33 @@
 namespace BCUKCompanion.ExpiredMinotaur.Treadmill.Ble;
 
+/// <summary>The fields of one Treadmill Data notification; each is null when the notification didn't include it.</summary>
 public class TreadmillDataSnapshot
 {
+    /// <summary>The belt's current speed, in km/h.</summary>
     public double? InstantaneousSpeedKmh { get; set; }
+
+    /// <summary>The average speed since the session started, in km/h.</summary>
     public double? AverageSpeedKmh { get; set; }
+
+    /// <summary>The distance covered since the session started, in metres.</summary>
     public double? TotalDistanceMeters { get; set; }
+
+    /// <summary>The energy used since the session started, in kcal (null if the device reports it unavailable).</summary>
     public int? TotalEnergyKcal { get; set; }
+
+    /// <summary>The current energy rate, in kcal per hour (null if the device reports it unavailable).</summary>
     public int? EnergyPerHourKcal { get; set; }
+
+    /// <summary>The current energy rate, in kcal per minute (null if the device reports it unavailable).</summary>
     public int? EnergyPerMinuteKcal { get; set; }
+
+    /// <summary>The heart rate, in beats per minute.</summary>
     public int? HeartRateBpm { get; set; }
+
+    /// <summary>The time since the session started, in seconds.</summary>
     public int? ElapsedTimeSeconds { get; set; }
+
+    /// <summary>The time left in the session, in seconds.</summary>
     public int? RemainingTimeSeconds { get; set; }
 }
 
@@ -20,6 +38,9 @@ public class TreadmillDataSnapshot
 /// </summary>
 public static class TreadmillDataParser
 {
+    /// <summary>Reads the fields a Treadmill Data notification's flags say are present.</summary>
+    /// <param name="data">The notification's raw bytes, flags first.</param>
+    /// <returns>The parsed fields; fields this parser doesn't track are skipped.</returns>
     public static TreadmillDataSnapshot Parse(byte[] data)
     {
         var snapshot = new TreadmillDataSnapshot();
@@ -82,8 +103,11 @@ public static class TreadmillDataParser
         return snapshot;
     }
 
-    // Per FTMS spec, a device that can't calculate one of these sends the sentinel
-    // "data not available" value (0xFFFF / 0xFF) rather than omitting the field.
+    /// <summary>
+    /// Reads the Expended Energy fields. Per the FTMS spec, a device that can't calculate one of
+    /// these sends the "data not available" value (0xFFFF / 0xFF) rather than omitting it, which
+    /// becomes null here.
+    /// </summary>
     private static void ParseExpendedEnergy(byte[] data, ref int i, TreadmillDataSnapshot snapshot)
     {
         var totalEnergy = ReadUInt16(data, ref i);
@@ -94,6 +118,7 @@ public static class TreadmillDataParser
         snapshot.EnergyPerMinuteKcal = energyPerMinute == 0xFF ? null : energyPerMinute;
     }
 
+    /// <summary>Reads a little-endian uint16 at <paramref name="i"/> and moves past it.</summary>
     private static ushort ReadUInt16(byte[] data, ref int i)
     {
         ushort value = (ushort)(data[i] | (data[i + 1] << 8));
@@ -101,6 +126,7 @@ public static class TreadmillDataParser
         return value;
     }
 
+    /// <summary>Reads a little-endian uint24 at <paramref name="i"/> and moves past it.</summary>
     private static int ReadUInt24(byte[] data, ref int i)
     {
         int value = data[i] | (data[i + 1] << 8) | (data[i + 2] << 16);

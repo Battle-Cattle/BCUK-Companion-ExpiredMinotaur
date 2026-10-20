@@ -68,7 +68,11 @@ internal sealed class TreadmillSpeedFollower
     /// Whether the belt is somewhere this app didn't send it: off target, past the grace period,
     /// and running. A nudge then starts from the belt's speed instead of the stale target.
     /// </summary>
+    /// <param name="targetKmh">The current target speed.</param>
     /// <param name="beltKmh">The latest reported belt speed, or null if none is recent.</param>
+    /// <param name="minKmh">The treadmill's minimum speed; below it the belt counts as stopped.</param>
+    /// <param name="stepKmh">The treadmill's speed step; differences within half a step are noise.</param>
+    /// <param name="now">The current time.</param>
     public bool BeltOverridesTarget(double targetKmh, double? beltKmh, double minKmh, double stepKmh, DateTime now) =>
         beltKmh is { } belt
         && now >= ownChangeUntil

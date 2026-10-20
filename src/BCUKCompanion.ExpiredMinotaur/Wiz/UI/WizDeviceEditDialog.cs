@@ -9,6 +9,7 @@ using TextBox = System.Windows.Controls.TextBox;
 
 namespace BCUKCompanion.ExpiredMinotaur.Wiz.UI;
 
+/// <summary>Adds a WiZ device by hand, or edits an existing one: name, IP address, type and capabilities.</summary>
 public sealed class WizDeviceEditDialog : Window
 {
     private readonly TextBox nameBox = new() { Margin = new Thickness(0, 0, 0, 8) };
@@ -21,8 +22,11 @@ public sealed class WizDeviceEditDialog : Window
 
     private readonly Guid id;
 
+    /// <summary>The device as entered, once the dialog closes with OK.</summary>
     public WizDevice? Result { get; private set; }
 
+    /// <summary>Creates the dialog, filled in from <paramref name="existing"/> when editing.</summary>
+    /// <param name="existing">The device to edit, or null to add a new one.</param>
     public WizDeviceEditDialog(WizDevice? existing = null)
     {
         id = existing?.Id ?? Guid.NewGuid();
@@ -74,6 +78,7 @@ public sealed class WizDeviceEditDialog : Window
         };
     }
 
+    /// <summary>Closes the dialog with the entered device in <see cref="Result"/>, or shows why the input can't be used.</summary>
     private void OnOk()
     {
         var name = nameBox.Text.Trim();

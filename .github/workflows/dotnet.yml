@@ -26,3 +26,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PACKAGES_READ_PAT }}
       - name: Build
         run: dotnet build --no-restore --configuration Release
+      - name: Test
+        run: dotnet test --no-build --configuration Release
