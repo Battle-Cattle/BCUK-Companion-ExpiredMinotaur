@@ -239,11 +239,12 @@ public class FtmsDevice : IDisposable
     private static readonly TimeSpan IndicationTimeout = TimeSpan.FromSeconds(2);
 
     /// <summary>
-    /// Writes raw bytes to the Control Point using WriteWithoutResponse,
-    /// matching the properties confirmed on T-TREADMILLY04
-    /// (INDICATE, WRITE NO RESPONSE), then waits for the matching
+    /// Writes raw bytes to the Control Point, then waits for the matching
     /// indication (Response Code 0x80, echoed opcode) rather than a
     /// fixed delay, so callers get the actual accept/reject result.
+    /// FTMS specifies a Write (with response), but T-TREADMILLY04 only
+    /// exposes INDICATE, WRITE NO RESPONSE — so use a write with response
+    /// when the characteristic supports it, and fall back otherwise.
     /// </summary>
     public async Task<ControlPointWriteResult> WriteControlPointAndAwaitAsync(byte[] data)
     {
@@ -262,7 +263,10 @@ public class FtmsDevice : IDisposable
         {
             var writer = new DataWriter();
             writer.WriteBytes(data);
-            var status = await ControlPoint.WriteValueAsync(writer.DetachBuffer(), GattWriteOption.WriteWithoutResponse);
+            var writeOption = ControlPoint.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Write)
+                ? GattWriteOption.WriteWithResponse
+                : GattWriteOption.WriteWithoutResponse;
+            var status = await ControlPoint.WriteValueAsync(writer.DetachBuffer(), writeOption);
             if (status != GattCommunicationStatus.Success)
                 return new ControlPointWriteResult(opcode, writeSucceeded: false, indicationReceived: false, resultCode: null);
 
