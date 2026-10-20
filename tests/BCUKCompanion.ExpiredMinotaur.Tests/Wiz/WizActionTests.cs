@@ -193,6 +193,14 @@ public sealed class WizActionTests
     }
 
     [Fact]
+    public void LightSetting_Accepts_RejectsTheWrongNumberOfValues()
+    {
+        Assert.False(WizLightSettingAction.ColorSetting.Accepts([1, 2]));
+        Assert.False(WizLightSettingAction.ColorSetting.Accepts([1, 2, 3, 4]));
+        Assert.False(WizLightSettingAction.BrightnessSetting.Accepts([]));
+    }
+
+    [Fact]
     public void WizActionContext_ProvidesOnlyItself()
     {
         Assert.Same(Context, Context.GetService(typeof(WizActionContext)));

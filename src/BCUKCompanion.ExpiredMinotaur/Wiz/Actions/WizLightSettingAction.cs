@@ -110,11 +110,12 @@ public abstract class WizLightSettingAction(WizLightSettingAction.LightSetting s
         /// <summary>The action's description in the mappings list, from its values.</summary>
         public required Func<IReadOnlyList<int>, string> Describe { get; init; }
 
-        /// <summary>Whether every value is within its channel's range.</summary>
+        /// <summary>Whether there's one value per channel and each is within its channel's range.</summary>
         /// <param name="values">One value per channel, in channel order.</param>
-        /// <returns>True when all of them are in range.</returns>
+        /// <returns>True when the count matches and every value is in range; false for too few or too many values.</returns>
         public bool Accepts(IReadOnlyList<int> values)
-            => Channels.Select((channel, i) => values[i] >= channel.Min && values[i] <= channel.Max).All(ok => ok);
+            => values.Count == Channels.Count
+                && Channels.Select((channel, i) => values[i] >= channel.Min && values[i] <= channel.Max).All(ok => ok);
     }
 
     /// <summary>One value a light setting is sent as.</summary>
