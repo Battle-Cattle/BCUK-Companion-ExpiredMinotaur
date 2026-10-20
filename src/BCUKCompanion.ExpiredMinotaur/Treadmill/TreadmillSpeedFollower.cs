@@ -1,18 +1,12 @@
 namespace BCUKCompanion.ExpiredMinotaur.Treadmill;
 
-/// <summary>What the keep-alive should do on one tick (see <see cref="TreadmillSpeedFollower.Decide"/>).</summary>
-internal enum KeepAliveAction
+/// <summary>What the follow tick should do (see <see cref="TreadmillSpeedFollower.Decide"/>).</summary>
+internal enum FollowAction
 {
-    /// <summary>Re-send the current target speed: the belt is still ramping to it, or its speed is unknown.</summary>
-    SendTarget,
+    /// <summary>Keep the current target: the belt is at it, ramping to it, or being changed (or was stopped) on the treadmill itself.</summary>
+    Hold,
 
-    /// <summary>
-    /// Send nothing this tick: the belt is already at the target, or is being changed (or was stopped)
-    /// on the treadmill itself.
-    /// </summary>
-    Skip,
-
-    /// <summary>The belt settled at a speed set on the treadmill itself: make that the target, without sending it.</summary>
+    /// <summary>The belt settled at a speed set on the treadmill itself: make that the target.</summary>
     AdoptBeltSpeed,
 }
 
@@ -21,11 +15,9 @@ internal sealed record BeltReading(double Kmh, DateTime At);
 
 /// <summary>
 /// Tells a speed set on the treadmill's own console apart from the belt still ramping to a target
-/// this app sent, so the keep-alive follows the console instead of dragging the belt back.
-/// The keep-alive re-sends a target while the belt ramps to it (one SetTargetSpeed write doesn't
-/// reliably stick on its own), which used to undo any console change within 2 seconds. Once the belt
-/// is at the target it sends nothing: FTMS keeps a target until it's changed, and a write every 2s
-/// stopped the treadmill's own console updating its time and distance.
+/// this app sent, so the next nudge starts from the console's speed instead of a stale target.
+/// Nothing here ever writes to the treadmill: FTMS keeps a target until it's changed and the treadmill
+/// ramps to it on its own, and re-sending it every 2s stopped the console updating its time and distance.
 /// Uses only the speeds and times it's given, with no BLE dependency, so it can be tested on its own.
 /// </summary>
 internal sealed class TreadmillSpeedFollower
@@ -45,17 +37,16 @@ internal sealed class TreadmillSpeedFollower
     private double lastDistanceKmh = double.PositiveInfinity;
     private int steadyTicks;
 
-    // The reading the history above last took in, and what Decide made of it. The keep-alive asks
+    // The reading the history above last took in. The follow tick asks
     // every 2s whether or not a new reading arrived, so a repeat must not count as another tick.
     private DateTime? lastReadingAt;
-    private KeepAliveAction lastAction = KeepAliveAction.SendTarget;
 
     // Set once the belt is seen off target outside this app's own change, so a later move towards
     // the old target (a console restart, a console reversal) isn't mistaken for this app's ramp.
     private bool consoleChangeSeen;
 
     /// <summary>
-    /// Call once connected, before the first keep-alive: forgets the last connection's history
+    /// Call once connected, before the first follow tick: forgets the last connection's history
     /// without a grace period, since connecting seeds the target from the belt rather than sending one.
     /// </summary>
     public void OnConnected()
@@ -84,36 +75,32 @@ internal sealed class TreadmillSpeedFollower
         && belt >= minKmh
         && Math.Abs(belt - targetKmh) > stepKmh / 2;
 
-    /// <summary>Decides what the keep-alive does this tick, and updates the belt history it compares against.</summary>
-    /// <param name="targetKmh">The target speed the keep-alive would re-send.</param>
-    /// <param name="reading">The latest belt reading, or null if none is recent (then the target is always sent, as before).</param>
+    /// <summary>Decides what the follow tick does, and updates the belt history it compares against.</summary>
+    /// <param name="targetKmh">The current target speed.</param>
+    /// <param name="reading">The latest belt reading, or null if none is recent (then the target is held).</param>
     /// <param name="minKmh">The treadmill's minimum speed; below it the belt counts as stopped.</param>
     /// <param name="stepKmh">The treadmill's speed step; differences within half a step are noise.</param>
     /// <param name="now">The current time.</param>
-    public KeepAliveAction Decide(double targetKmh, BeltReading? reading, double minKmh, double stepKmh, DateTime now)
+    public FollowAction Decide(double targetKmh, BeltReading? reading, double minKmh, double stepKmh, DateTime now)
     {
         if (reading is null)
         {
             ResetTracking();
-            return KeepAliveAction.SendTarget;
+            return FollowAction.Hold;
         }
 
         if (reading.At == lastReadingAt)
         {
-            // No new reading since the last tick: nothing has changed, so neither the history nor the
-            // decision moves on (an adopted speed is the target now, so it's left alone).
-            return Math.Abs(reading.Kmh - targetKmh) > stepKmh / 2 && lastAction == KeepAliveAction.SendTarget
-                ? KeepAliveAction.SendTarget
-                : KeepAliveAction.Skip;
+            // No new reading since the last tick: nothing has changed, so the history doesn't move on.
+            return FollowAction.Hold;
         }
 
         lastReadingAt = reading.At;
-        lastAction = DecideOnNewReading(targetKmh, reading.Kmh, minKmh, stepKmh, now);
-        return lastAction;
+        return DecideOnNewReading(targetKmh, reading.Kmh, minKmh, stepKmh, now);
     }
 
     /// <summary>Takes a newly arrived belt speed into the history and decides on it (see <see cref="Decide"/>).</summary>
-    private KeepAliveAction DecideOnNewReading(double targetKmh, double belt, double minKmh, double stepKmh, DateTime now)
+    private FollowAction DecideOnNewReading(double targetKmh, double belt, double minKmh, double stepKmh, DateTime now)
     {
         double tolerance = stepKmh / 2;
         double distance = Math.Abs(belt - targetKmh);
@@ -126,25 +113,25 @@ internal sealed class TreadmillSpeedFollower
 
         if (distance <= tolerance)
         {
-            // At the target, however it got there: the treadmill holds it without being told again.
+            // At the target, however it got there.
             consoleChangeSeen = false;
-            return KeepAliveAction.Skip;
+            return FollowAction.Hold;
         }
 
         if (now < ownChangeUntil || converging)
         {
             // Still ramping to a target this app set.
-            return KeepAliveAction.SendTarget;
+            return FollowAction.Hold;
         }
 
         consoleChangeSeen = true;
         if (belt < minKmh)
         {
-            // Stopped (or slowed below range) on the treadmill: don't fight it.
-            return KeepAliveAction.Skip;
+            // Stopped (or slowed below range) on the treadmill: there's no speed to adopt.
+            return FollowAction.Hold;
         }
 
-        return steadyTicks >= SteadyTicksToAdopt ? KeepAliveAction.AdoptBeltSpeed : KeepAliveAction.Skip;
+        return steadyTicks >= SteadyTicksToAdopt ? FollowAction.AdoptBeltSpeed : FollowAction.Hold;
     }
 
     /// <summary>Call after adopting the belt's speed as the target, so tracking starts again from it.</summary>
@@ -158,7 +145,6 @@ internal sealed class TreadmillSpeedFollower
     private void ResetTracking()
     {
         lastReadingAt = null;
-        lastAction = KeepAliveAction.SendTarget;
         lastBeltKmh = null;
         lastDistanceKmh = double.PositiveInfinity;
         steadyTicks = 0;

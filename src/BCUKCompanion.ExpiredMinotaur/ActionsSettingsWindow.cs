@@ -63,7 +63,7 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
         // StatusChanged fires on whatever thread triggered it (a BLE callback thread, or the
-        // keep-alive timer's thread-pool thread) — marshal onto the UI thread ourselves.
+        // follow timer's thread-pool thread) — marshal onto the UI thread ourselves.
         treadmillClient.StatusChanged += OnTreadmillStatusChanged;
 
         treadmillConnectButton.Click += async (_, _) => await OnTreadmillConnectAsync().ConfigureAwait(true);
