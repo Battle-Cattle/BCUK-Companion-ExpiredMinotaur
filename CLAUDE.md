@@ -26,6 +26,8 @@ The rest of the first-party code is this app's own integrations:
   window (a subclass of the Shell's `EventActionMappingsWindow`) and its
   `actions-config.json`, including migration from the older per-integration
   config files.
+- `tests/BCUKCompanion.ExpiredMinotaur.Tests` — xUnit tests for the
+  integrations' logic. CI runs them in the Windows job.
 
 ## What belongs in Core instead
 
@@ -38,12 +40,10 @@ setup stay in this repo.
 
 ## Building
 
-This is a Windows-only app (WPF + WinForms via `BCUKCompanion.TrayApp.Shell`).
-The `Microsoft.NET.Sdk.WindowsDesktop` MSBuild SDK is not available on
-Linux/macOS — `dotnet build`/`dotnet restore` here will fail with
-`MSB4236` outside Windows. Build/run on a real Windows machine or the
-`windows-latest` GitHub Actions runner (`.github/workflows/dotnet.yml`).
-Do not spend time trying to work around this on Linux.
+This is a Windows app (WPF + WinForms via `BCUKCompanion.TrayApp.Shell`). It
+only *runs* on Windows, but it compiles on Linux with
+`-p:EnableWindowsTargeting=true`, which fetches the Windows reference packs from
+NuGet (without it, the build fails with `MSB4236`).
 
 Restoring requires read access to the org's GitHub Packages feed
 (`https://nuget.pkg.github.com/Battle-Cattle/index.json`, configured in
@@ -54,6 +54,42 @@ packages owned by *this* repo, not the separate `BCUK-Companion-Core`
 repo that publishes `BCUKCompanion.Core`/`BCUKCompanion.TrayApp.Shell` —
 CI instead uses a `PACKAGES_READ_PAT` repo secret (a classic PAT with
 `read:packages` from an account with access to the org's packages).
+
+### Building and testing on Linux
+
+A sandbox often can't reach the GitHub Packages feed. Build against a sibling
+checkout of `BCUK-Companion-Core` instead (`UseLocalCore`, which expects it at
+`../BCUK-Companion-Core`), restoring from nuget.org only:
+
+```bash
+cat > /tmp/nuget.org.config <<'XML'
+<?xml version="1.0" encoding="utf-8"?>
+<configuration><packageSources><clear /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>
+XML
+dotnet restore --configfile /tmp/nuget.org.config -p:EnableWindowsTargeting=true -p:UseLocalCore=true
+dotnet build --no-restore -p:EnableWindowsTargeting=true -p:UseLocalCore=true
+```
+
+Check out the Core version this repo pins (see Versioning), or the build tests
+something other than what ships.
+
+The tests target `net10.0-windows`, and Linux has no `Microsoft.WindowsDesktop.App`
+runtime to run them on. None of them touch WPF types, though, so after the build
+you can drop that framework from the test host's runtimeconfig and run them on the
+base runtime:
+
+```bash
+f=$(find tests/BCUKCompanion.ExpiredMinotaur.Tests/bin -name '*.Tests.runtimeconfig.json')
+python3 - "$f" <<'PY'
+import json, sys
+p = sys.argv[1]; c = json.load(open(p)); o = c["runtimeOptions"]
+o["frameworks"] = [x for x in o.get("frameworks", []) if x["name"] != "Microsoft.WindowsDesktop.App"]
+json.dump(c, open(p, "w"), indent=2)
+PY
+dotnet test tests/BCUKCompanion.ExpiredMinotaur.Tests --no-build
+```
+
+That's a local shortcut. CI's Windows job runs the tests for real.
 
 ## Versioning
 
@@ -83,15 +119,25 @@ Qlty reports function complexity, too many returns, deep nesting, long parameter
 - When you change a member's signature or behaviour, update its doc comment to match. Stale docs are worse than no docs.
 - **Test projects are exempt.** A descriptive test method name documents the behaviour instead. Test-local fakes and helpers don't need doc comments either. Source projects still follow the rule above.
 - **Concise lambdas** (LINQ selectors, event handlers wired inline, `Task.Run` bodies) don't need a doc comment. Add a short `//` comment only when the behaviour isn't obvious from the code.
+- The build enforces this. `Directory.Build.props` and `.editorconfig` turn StyleCop's SA1600/SA1601/SA1602 into errors (`stylecop.json` extends them to internal and private members), and a `<param>`, `<paramref>` or `<see cref>` that no longer matches the code fails the build too. Private fields are exempt. Use `/// <inheritdoc/>` on an override that adds nothing to its base's docs.
 
 ### Tests
 
-- This repo has no test project yet, and nothing here builds on Linux. Keep logic you can test free of BLE, UDP and WPF dependencies, the way `TreadmillSpeedFollower` takes only the speeds and times it's given. Logic that ends up in Core goes under Core's test rules.
-- Once a test project exists here, every new function or behaviour change **must** include or update a test in it. When modifying existing behaviour, update affected tests before committing. Never leave a passing-but-wrong test.
+- Every new function or behaviour change **must** include or update an xUnit test in `tests/BCUKCompanion.ExpiredMinotaur.Tests`, mirroring the source folder (e.g. `Treadmill/` → `Treadmill/`).
+- When modifying existing behaviour, update affected tests before committing. Never leave a passing-but-wrong test.
+- A fix for a bug or a review finding gets a test that fails without the fix.
+- Keep logic you can test free of BLE, UDP and WPF, so it can be tested without hardware. For example, `TreadmillSpeedFollower` takes only the speeds and times it's given, `ControlPointService` writes through `IControlPointWriter`, `WizClient`'s reply parsing is in static methods, and `WizModuleInference` sits outside its dialog. Code that only talks to the device or draws a window (`FtmsDevice`, the UDP socket loop, the dialogs) is the exception.
+- Logic that ends up in Core goes under Core's test rules.
 
 ## ALWAYS: Before committing
 
-Nothing here builds on Linux. Re-read your diff adversarially (types, nullability, missing `using`s, doc comments). Rely on CI's Windows build (`.github/workflows/dotnet.yml`) to confirm it before treating the PR as green. Bump `VERSION` when the change should ship (see the README's "Releasing").
+Build, then run the tests (on Linux, see "Building and testing on Linux"):
+
+```bash
+dotnet build && dotnet test
+```
+
+The build fails on a missing doc comment as well as a compile error. Let CI's Windows job confirm the result before treating the PR as green. Bump `VERSION` when the change should ship (see the README's "Releasing").
 
 ## PR Reviews (Qlty)
 
