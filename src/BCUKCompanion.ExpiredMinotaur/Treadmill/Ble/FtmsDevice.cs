@@ -38,6 +38,7 @@ public readonly struct ControlPointWriteResult
     public bool Accepted => IndicationReceived && ResultCode == FtmsConstants.ResultSuccess;
 
     /// <summary>A one-line summary for the log, e.g. <c>0x02 -> OK</c>.</summary>
+    /// <returns>The opcode and whether the write failed, timed out, succeeded or was rejected with a result code.</returns>
     public override string ToString()
     {
         if (!WriteSucceeded) return $"0x{OpCode:X2} -> GATT write failed";
@@ -108,6 +109,9 @@ public class FtmsDevice : IControlPointWriter, IDisposable
     /// is found before <paramref name="timeout"/> or <paramref name="cancellationToken"/>
     /// is cancelled.
     /// </summary>
+    /// <param name="timeout">How long to scan before giving up.</param>
+    /// <param name="cancellationToken">Stops the scan early, completing with null.</param>
+    /// <returns>A task completing with the treadmill's 48-bit Bluetooth address, or null if none was found.</returns>
     public static Task<ulong?> FindFitnessMachineAddressAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         var tcs = new TaskCompletionSource<ulong?>();
@@ -236,6 +240,8 @@ public class FtmsDevice : IControlPointWriter, IDisposable
     }
 
     /// <summary>Looks up one characteristic of the Fitness Machine service, or null if it's missing or the lookup fails.</summary>
+    /// <param name="characteristicUuid">The characteristic's full 128-bit UUID (see <see cref="FtmsConstants"/>).</param>
+    /// <returns>A task completing with the first matching characteristic, or null if not connected, not found or the lookup failed.</returns>
     private async Task<GattCharacteristic?> GetCharacteristicAsync(Guid characteristicUuid)
     {
         if (_fitnessService == null) return null;
@@ -259,6 +265,9 @@ public class FtmsDevice : IControlPointWriter, IDisposable
         string SubscribeFailWarningFormat);
 
     /// <summary>Attaches a value handler to <paramref name="characteristic"/> and enables its notifications or indications.</summary>
+    /// <param name="characteristic">The characteristic to subscribe to, or null if it wasn't found (only adds the not-found warning).</param>
+    /// <param name="spec">The CCCD mode, handler storage, event to raise and warnings to use.</param>
+    /// <returns>A task that completes once the CCCD write has finished; a missing characteristic or a failed CCCD write is recorded in <see cref="LastConnectWarnings"/> rather than thrown.</returns>
     private async Task SubscribeAsync(GattCharacteristic? characteristic, SubscriptionSpec spec)
     {
         if (characteristic == null)
@@ -343,6 +352,7 @@ public class FtmsDevice : IControlPointWriter, IDisposable
     /// spec section 4.4. Returns null if the characteristic is absent or
     /// unreadable — callers should fall back to a hardcoded default range.
     /// </summary>
+    /// <returns>A task completing with the minimum, maximum and increment in km/h, or null if the range couldn't be read.</returns>
     public async Task<(double MinKmh, double MaxKmh, double IncrementKmh)?> ReadSupportedSpeedRangeAsync()
     {
         if (SupportedSpeedRange == null) return null;
@@ -367,6 +377,8 @@ public class FtmsDevice : IControlPointWriter, IDisposable
     }
 
     /// <summary>Copies a WinRT buffer's bytes into an array.</summary>
+    /// <param name="buffer">The characteristic value to copy.</param>
+    /// <returns>A new array holding every unread byte of <paramref name="buffer"/>.</returns>
     private static byte[] ReadBuffer(IBuffer buffer)
     {
         var reader = DataReader.FromBuffer(buffer);

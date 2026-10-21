@@ -22,6 +22,7 @@ public sealed class WizActionEditor : EventActionEditor
     private sealed record WizActionKindOption(string Kind, string DisplayName)
     {
         /// <summary>The name shown in the picker.</summary>
+        /// <returns><see cref="DisplayName"/>.</returns>
         public override string ToString() => DisplayName;
     }
 
@@ -159,6 +160,7 @@ public sealed class WizActionEditor : EventActionEditor
 
     /// <summary>True for every Wiz device action.</summary>
     /// <param name="action">The action being edited.</param>
+    /// <returns>True if <paramref name="action"/> is a <see cref="WizDeviceActionBase"/>; otherwise false.</returns>
     public override bool CanEdit(IEventAction action) => action is WizDeviceActionBase;
 
     /// <summary>Shows an existing action's device, kind and parameters.</summary>
@@ -189,6 +191,7 @@ public sealed class WizActionEditor : EventActionEditor
 
     /// <summary>Builds the selected kind of action for the selected device.</summary>
     /// <param name="error">Why no action could be built, when null is returned.</param>
+    /// <returns>A new action of the selected kind for the selected device, or null if no device or kind is selected.</returns>
     public override IEventAction? TryBuild(out string? error)
     {
         if (SelectedDevice is not { } device)

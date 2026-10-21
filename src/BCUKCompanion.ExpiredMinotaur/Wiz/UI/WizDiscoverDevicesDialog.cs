@@ -21,6 +21,7 @@ public sealed class WizDiscoverDevicesDialog : Window
         public WizDiscoveredDevice Device { get; } = device;
 
         /// <summary>The row's text: module name, address and inferred type.</summary>
+        /// <returns>e.g. "ESP25_SHRGB_01 - 192.168.1.20 (inferred: Light)".</returns>
         public override string ToString() =>
             $"{Device.ModuleName} - {Device.IpAddress} (inferred: {WizModuleInference.InferDeviceType(Device.ModuleName)})";
     }
@@ -81,6 +82,8 @@ public sealed class WizDiscoverDevicesDialog : Window
     }
 
     /// <summary>Runs one discovery scan and lists the new devices it finds (ignored if a scan is already running).</summary>
+    /// <param name="knownIpAddresses">Addresses of devices already configured, which are left out of the results.</param>
+    /// <returns>A task that completes once the scan has finished (or failed, with the failure shown in the status line).</returns>
     private async Task RunDiscoveryAsync(IReadOnlyCollection<string> knownIpAddresses)
     {
         if (isScanning)

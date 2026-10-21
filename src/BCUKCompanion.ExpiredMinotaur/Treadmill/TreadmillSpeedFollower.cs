@@ -57,6 +57,7 @@ internal sealed class TreadmillSpeedFollower
     }
 
     /// <summary>Call whenever this app sends a new target (an accepted nudge), so the belt's ramp to it isn't mistaken for a console change.</summary>
+    /// <param name="now">When the target was accepted (UTC); the grace period runs from here.</param>
     public void OnOwnTargetSet(DateTime now)
     {
         ownChangeUntil = now + OwnChangeGrace;
@@ -73,6 +74,7 @@ internal sealed class TreadmillSpeedFollower
     /// <param name="minKmh">The treadmill's minimum speed; below it the belt counts as stopped.</param>
     /// <param name="stepKmh">The treadmill's speed step; differences within half a step are noise.</param>
     /// <param name="now">The current time.</param>
+    /// <returns>True if a nudge should start from the belt's speed; false if it should start from the target.</returns>
     public bool BeltOverridesTarget(double targetKmh, double? beltKmh, double minKmh, double stepKmh, DateTime now) =>
         beltKmh is { } belt
         && now >= ownChangeUntil
@@ -85,6 +87,7 @@ internal sealed class TreadmillSpeedFollower
     /// <param name="minKmh">The treadmill's minimum speed; below it the belt counts as stopped.</param>
     /// <param name="stepKmh">The treadmill's speed step; differences within half a step are noise.</param>
     /// <param name="now">The current time.</param>
+    /// <returns><see cref="FollowAction.AdoptBeltSpeed"/> once a console change has settled; otherwise <see cref="FollowAction.Hold"/>.</returns>
     public FollowAction Decide(double targetKmh, BeltReading? reading, double minKmh, double stepKmh, DateTime now)
     {
         if (reading is null)
@@ -104,6 +107,12 @@ internal sealed class TreadmillSpeedFollower
     }
 
     /// <summary>Takes a newly arrived belt speed into the history and decides on it (see <see cref="Decide"/>).</summary>
+    /// <param name="targetKmh">The current target speed, in km/h.</param>
+    /// <param name="belt">The newly reported belt speed, in km/h.</param>
+    /// <param name="minKmh">The treadmill's minimum speed in km/h; below it the belt counts as stopped.</param>
+    /// <param name="stepKmh">The treadmill's speed step in km/h; differences within half a step are noise.</param>
+    /// <param name="now">The current UTC time, compared against the own-change grace period.</param>
+    /// <returns><see cref="FollowAction.AdoptBeltSpeed"/> if the belt has held steady off target outside this app's own change; otherwise <see cref="FollowAction.Hold"/>.</returns>
     private FollowAction DecideOnNewReading(double targetKmh, double belt, double minKmh, double stepKmh, DateTime now)
     {
         double tolerance = stepKmh / 2;

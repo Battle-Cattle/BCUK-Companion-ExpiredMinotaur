@@ -27,6 +27,9 @@ public sealed class WizToggleAction : WizDeviceActionBase
     /// dispatch failure here (matching every other Wiz action, which reports false rather than
     /// throwing), not an exceptional condition that should surface as "Action dispatch crashed".
     /// </summary>
+    /// <param name="client">The client to read and set the device's state with.</param>
+    /// <param name="device">The device to toggle.</param>
+    /// <param name="cancellationToken">Cancels the read or the command.</param>
     /// <returns>False if the device's state couldn't be read, otherwise whether the toggle was accepted.</returns>
     protected override async Task<bool> SendAsync(WizClient client, WizDevice device, CancellationToken cancellationToken)
     {

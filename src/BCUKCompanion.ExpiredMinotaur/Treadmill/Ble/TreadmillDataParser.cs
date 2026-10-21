@@ -108,6 +108,9 @@ public static class TreadmillDataParser
     /// these sends the "data not available" value (0xFFFF / 0xFF) rather than omitting it, which
     /// becomes null here.
     /// </summary>
+    /// <param name="data">The raw Treadmill Data notification.</param>
+    /// <param name="i">The offset of the Total Energy field; advanced past the five Expended Energy bytes.</param>
+    /// <param name="snapshot">The snapshot whose energy fields are set.</param>
     private static void ParseExpendedEnergy(byte[] data, ref int i, TreadmillDataSnapshot snapshot)
     {
         var totalEnergy = ReadUInt16(data, ref i);
@@ -119,6 +122,9 @@ public static class TreadmillDataParser
     }
 
     /// <summary>Reads a little-endian uint16 at <paramref name="i"/> and moves past it.</summary>
+    /// <param name="data">The raw Treadmill Data notification.</param>
+    /// <param name="i">The offset to read at; advanced by 2.</param>
+    /// <returns>The decoded value.</returns>
     private static ushort ReadUInt16(byte[] data, ref int i)
     {
         ushort value = (ushort)(data[i] | (data[i + 1] << 8));
@@ -127,6 +133,9 @@ public static class TreadmillDataParser
     }
 
     /// <summary>Reads a little-endian uint24 at <paramref name="i"/> and moves past it.</summary>
+    /// <param name="data">The raw Treadmill Data notification.</param>
+    /// <param name="i">The offset to read at; advanced by 3.</param>
+    /// <returns>The decoded value.</returns>
     private static int ReadUInt24(byte[] data, ref int i)
     {
         int value = data[i] | (data[i + 1] << 8) | (data[i + 2] << 16);

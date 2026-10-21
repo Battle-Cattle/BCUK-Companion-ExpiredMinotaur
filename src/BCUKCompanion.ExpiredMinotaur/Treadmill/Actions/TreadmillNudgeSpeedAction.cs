@@ -22,6 +22,7 @@ public sealed class TreadmillNudgeSpeedAction : IEventAction
 
     /// <summary>Describes the action for the mappings list, e.g. "Speed up by 1.0 km/h".</summary>
     /// <param name="context">Unused: the description needs no live state.</param>
+    /// <returns>"Speed up by N km/h" for a zero or positive delta, otherwise "Slow down by N km/h".</returns>
     public string Describe(IEventActionContext context) => DeltaKmh >= 0
         ? $"Speed up by {DeltaKmh:0.0} km/h"
         : $"Slow down by {Math.Abs(DeltaKmh):0.0} km/h";
@@ -33,6 +34,7 @@ public sealed class TreadmillNudgeSpeedAction : IEventAction
     // unsuccessful without blocking edits made while disconnected.
     /// <summary>Rejects a zero delta, which would do nothing.</summary>
     /// <param name="context">Unused: see the comment above.</param>
+    /// <returns>One error for a zero delta; otherwise empty.</returns>
     public IReadOnlyList<string> Validate(IEventActionContext context)
         => DeltaKmh == 0 ? ["Delta must be non-zero."] : [];
 

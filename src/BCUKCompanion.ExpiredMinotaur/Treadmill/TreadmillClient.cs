@@ -91,6 +91,7 @@ public sealed class TreadmillClient : IDisposable
     }
 
     /// <summary>Subscribes to a device's disconnect and speed-reading events.</summary>
+    /// <param name="attachedDevice">The device (current or freshly swapped in) whose events to handle.</param>
     private void AttachDeviceEvents(FtmsDevice attachedDevice)
     {
         // Without this the client kept reporting itself connected after the treadmill was powered
@@ -212,6 +213,8 @@ public sealed class TreadmillClient : IDisposable
     /// raised a status describing why) on any failure or cancellation; the caller is
     /// responsible for deciding what a successful return means for <see cref="IsConnected"/>.
     /// </summary>
+    /// <param name="cancellationToken">Cancels the scan, connect or first speed read.</param>
+    /// <returns>A task completing with true once connected and configured; false on failure or cancellation.</returns>
     private async Task<bool> ScanConnectAndConfigureAsync(CancellationToken cancellationToken)
     {
         RaiseStatus("Scanning...");
@@ -329,6 +332,7 @@ public sealed class TreadmillClient : IDisposable
     /// later Connect can scan and re-read setup-dependent state instead of reusing a
     /// torn-down instance, exactly like the test app's Disconnect button.
     /// </summary>
+    /// <returns>A task that completes once the connection is torn down and the status reported.</returns>
     public Task DisconnectAsync() => DisconnectAsync(onlyDevice: null, "Disconnected.");
 
     /// <summary>
@@ -337,6 +341,9 @@ public sealed class TreadmillClient : IDisposable
     /// is still the current device, so a late connection-lost callback from a device already
     /// replaced by a reconnect can't tear down the new connection.
     /// </summary>
+    /// <param name="onlyDevice">The device whose connection was lost, or null to disconnect whatever is current.</param>
+    /// <param name="status">The status line to raise once torn down.</param>
+    /// <returns>A task that completes once the teardown has finished or been skipped.</returns>
     private async Task DisconnectAsync(FtmsDevice? onlyDevice, string status)
     {
         // Wait for any write already in flight (a Nudge) — or a ConnectAsync
@@ -385,6 +392,9 @@ public sealed class TreadmillClient : IDisposable
     /// console, the nudge starts from that speed instead of the stale target. Deliberately never
     /// sends Start — if the treadmill isn't already moving, nudging simply won't move a stopped belt.
     /// </summary>
+    /// <param name="deltaKmh">How much to change the speed by, in km/h; negative slows down.</param>
+    /// <param name="cancellationToken">Cancels waiting for the write lock (the method then returns false).</param>
+    /// <returns>A task completing with true if the treadmill accepted the new target; false if disconnected, cancelled, rejected or the write failed. Never throws.</returns>
     public async Task<bool> NudgeSpeedAsync(double deltaKmh, CancellationToken cancellationToken = default)
     {
         if (!IsConnected || controlPointService is null)
@@ -448,6 +458,8 @@ public sealed class TreadmillClient : IDisposable
     }
 
     /// <summary>The belt's last reading, or null if there's none from the last <see cref="SpeedReadingMaxAge"/>.</summary>
+    /// <param name="now">The current UTC time, which the reading's age is measured against.</param>
+    /// <returns>The last reading if it's recent enough; otherwise null.</returns>
     private BeltReading? RecentBeltReading(DateTime now)
     {
         var reading = Volatile.Read(ref lastSpeedReading);
@@ -455,6 +467,8 @@ public sealed class TreadmillClient : IDisposable
     }
 
     /// <summary>Rounds a speed to the treadmill's step and clamps it to its supported range.</summary>
+    /// <param name="speedKmh">The speed to snap, in km/h.</param>
+    /// <returns>The nearest multiple of <see cref="SpeedStepKmh"/>, clamped to [<see cref="MinSpeedKmh"/>, <see cref="MaxSpeedKmh"/>].</returns>
     private double SnapAndClamp(double speedKmh)
     {
         var snapped = Math.Round(speedKmh / SpeedStepKmh) * SpeedStepKmh;
@@ -467,6 +481,7 @@ public sealed class TreadmillClient : IDisposable
     /// Never writes to the treadmill: it ramps to a target on its own, and re-sending the target every 2s
     /// stopped its console updating time and distance.
     /// </summary>
+    /// <returns>A task that completes once the tick has finished.</returns>
     private async Task FollowBeltSpeedAsync()
     {
         if (!IsConnected)
@@ -523,6 +538,7 @@ public sealed class TreadmillClient : IDisposable
     }
 
     /// <summary>Raises <see cref="StatusChanged"/> with a user-facing status line.</summary>
+    /// <param name="message">The status line to show.</param>
     private void RaiseStatus(string message) => StatusChanged?.Invoke(this, message);
 
     /// <summary>Stops the follow timer and disconnects; any call still waiting on the write lock then does nothing.</summary>

@@ -14,5 +14,6 @@ public sealed class TreadmillActionContext(TreadmillClient client) : IEventActio
 
     /// <summary>Returns this context for <see cref="TreadmillActionContext"/>, and null for any other type.</summary>
     /// <param name="serviceType">The type being asked for.</param>
+    /// <returns>This context when <paramref name="serviceType"/> is <see cref="TreadmillActionContext"/>; otherwise null.</returns>
     public object? GetService(Type serviceType) => serviceType == typeof(TreadmillActionContext) ? this : null;
 }
