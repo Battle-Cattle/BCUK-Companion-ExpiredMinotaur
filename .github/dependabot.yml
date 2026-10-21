@@ -31,14 +31,15 @@ updates:
       bcuk-companion:
         patterns:
           - "BCUKCompanion.*"
+      xunit:
+        patterns:
+          - "xunit*"
       # Minor and patch bumps arrive as one PR, so CodeRabbit's hourly review limit isn't spent on each.
+      # An update joins the first group it matches, so this catch-all stays last.
       nuget-minor-and-patch:
         update-types:
           - "minor"
           - "patch"
-      xunit:
-        patterns:
-          - "xunit*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
