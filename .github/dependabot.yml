@@ -52,4 +52,5 @@ updates:
     ignore:
       # release.yml pins Core's reusable release workflow to the commit that matches the
       # BCUKCompanion.* package versions; it's bumped by hand alongside them.
-      - dependency-name: "Battle-Cattle/BCUK-Companion-Core"
+      # A reusable workflow's dependency name includes its path, so match the whole repo.
+      - dependency-name: "Battle-Cattle/BCUK-Companion-Core/*"
