@@ -133,11 +133,13 @@ public sealed class WizActionTests
         var registry = new EventActionTypeRegistry();
         registry.Register<WizSetBrightnessAction>(WizSetBrightnessAction.ActionKind);
         registry.Register<WizSetColorTemperatureAction>(WizSetColorTemperatureAction.ActionKind);
+        registry.Register<WizSetColorAction>(WizSetColorAction.ActionKind);
         var options = new JsonSerializerOptions { Converters = { new EventActionJsonConverter(registry) } };
         IEventAction[] actions =
         [
             new WizSetBrightnessAction { DeviceId = ColorLight.Id, Brightness = 40 },
             new WizSetColorTemperatureAction { DeviceId = ColorLight.Id, ColorTemperatureKelvin = 2700 },
+            new WizSetColorAction { DeviceId = ColorLight.Id, R = 10, G = 20, B = 30 },
         ];
 
         string json = JsonSerializer.Serialize(actions, options);
@@ -145,9 +147,57 @@ public sealed class WizActionTests
 
         Assert.Contains("\"Brightness\":40", json);
         Assert.Contains("\"ColorTemperatureKelvin\":2700", json);
+        Assert.Contains("\"R\":10,\"G\":20,\"B\":30", json);
+        Assert.DoesNotContain("Values", json);
         Assert.Equal(40, Assert.IsType<WizSetBrightnessAction>(roundTripped[0]).Brightness);
         Assert.Equal(2700, Assert.IsType<WizSetColorTemperatureAction>(roundTripped[1]).ColorTemperatureKelvin);
         Assert.Equal(ColorLight.Id, Assert.IsType<WizSetColorTemperatureAction>(roundTripped[1]).DeviceId);
+        var color = Assert.IsType<WizSetColorAction>(roundTripped[2]);
+        Assert.Equal((10, 20, 30), (color.R, color.G, color.B));
+    }
+
+    [Fact]
+    public void Validate_ColorOnAPlug_ReportsBothProblems()
+    {
+        var errors = new WizSetColorAction { DeviceId = Plug.Id, R = 1 }.Validate(Context);
+
+        Assert.Equal(["Plugs do not support wiz.setColor.", "Fan does not support color."], errors);
+    }
+
+    [Fact]
+    public void ForKind_FindsEachLightSetting()
+    {
+        Assert.Same(WizLightSettingAction.BrightnessSetting, WizLightSettingAction.ForKind(WizSetBrightnessAction.ActionKind));
+        Assert.Same(WizLightSettingAction.ColorTemperatureSetting, WizLightSettingAction.ForKind(WizSetColorTemperatureAction.ActionKind));
+        Assert.Same(WizLightSettingAction.ColorSetting, WizLightSettingAction.ForKind(WizSetColorAction.ActionKind));
+        Assert.Null(WizLightSettingAction.ForKind(WizToggleAction.ActionKind));
+    }
+
+    [Fact]
+    public void LightSetting_IsSupportedBy_MatchesTheDeviceCapability()
+    {
+        Assert.True(WizLightSettingAction.ColorSetting.IsSupportedBy(ColorLight));
+        Assert.False(WizLightSettingAction.ColorSetting.IsSupportedBy(WhiteLight));
+        Assert.False(WizLightSettingAction.BrightnessSetting.IsSupportedBy(WhiteLight));
+        Assert.False(WizLightSettingAction.ColorTemperatureSetting.IsSupportedBy(WhiteLight));
+    }
+
+    [Theory]
+    [InlineData(0, 255, 128, true)]
+    [InlineData(-1, 0, 0, false)]
+    [InlineData(0, 256, 0, false)]
+    [InlineData(0, 0, 300, false)]
+    public void LightSetting_Accepts_ChecksEveryChannel(int r, int g, int b, bool accepted)
+    {
+        Assert.Equal(accepted, WizLightSettingAction.ColorSetting.Accepts([r, g, b]));
+    }
+
+    [Fact]
+    public void LightSetting_Accepts_RejectsTheWrongNumberOfValues()
+    {
+        Assert.False(WizLightSettingAction.ColorSetting.Accepts([1, 2]));
+        Assert.False(WizLightSettingAction.ColorSetting.Accepts([1, 2, 3, 4]));
+        Assert.False(WizLightSettingAction.BrightnessSetting.Accepts([]));
     }
 
     [Fact]
