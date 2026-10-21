@@ -1,0 +1,54 @@
+# Dependabot version updates. Options:
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+
+registries:
+  # BCUKCompanion.Core/.Shell come from the org's GitHub Packages feed (see NuGet.config). Reading
+  # it needs a classic PAT with read:packages, stored as a *Dependabot* secret named
+  # PACKAGES_READ_PAT (Settings → Secrets and variables → Dependabot), the same PAT CI uses.
+  # Dependabot's PRs run CI with Dependabot secrets only, so this also lets their build restore.
+  battle-cattle-github:
+    type: nuget-feed
+    url: https://nuget.pkg.github.com/Battle-Cattle/index.json
+    token: ${{secrets.PACKAGES_READ_PAT}}
+  nuget-org:
+    type: nuget-feed
+    url: https://api.nuget.org/v3/index.json
+
+updates:
+  - package-ecosystem: "nuget"
+    directory: "/"
+    registries:
+      - battle-cattle-github
+      - nuget-org
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      # Core and the Shell ship together; bump both in one PR (CLAUDE.md "Versioning"). Before
+      # merging, move release.yml's Core workflow pin to the matching Core commit by hand.
+      bcuk-companion:
+        patterns:
+          - "BCUKCompanion.*"
+      # Minor and patch bumps arrive as one PR, so CodeRabbit's hourly review limit isn't spent on each.
+      nuget-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+      xunit:
+        patterns:
+          - "xunit*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    ignore:
+      # release.yml pins Core's reusable release workflow to the commit that matches the
+      # BCUKCompanion.* package versions; it's bumped by hand alongside them.
+      - dependency-name: "Battle-Cattle/BCUK-Companion-Core"
