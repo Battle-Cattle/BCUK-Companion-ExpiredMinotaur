@@ -239,9 +239,9 @@ public class FtmsDevice : IControlPointWriter, IDisposable
         }
     }
 
-    /// <summary>Looks up one characteristic of the Fitness Machine service, or null if it's missing or the lookup fails.</summary>
+    /// <summary>Looks up one characteristic of the Fitness Machine service, or null if it's missing.</summary>
     /// <param name="characteristicUuid">The characteristic's full 128-bit UUID (see <see cref="FtmsConstants"/>).</param>
-    /// <returns>A task completing with the first matching characteristic, or null if not connected, not found or the lookup failed.</returns>
+    /// <returns>A task completing with the first matching characteristic, or null if not connected, the lookup returned a non-success status or nothing matched. An exception from the lookup itself propagates.</returns>
     private async Task<GattCharacteristic?> GetCharacteristicAsync(Guid characteristicUuid)
     {
         if (_fitnessService == null) return null;
@@ -265,9 +265,9 @@ public class FtmsDevice : IControlPointWriter, IDisposable
         string SubscribeFailWarningFormat);
 
     /// <summary>Attaches a value handler to <paramref name="characteristic"/> and enables its notifications or indications.</summary>
-    /// <param name="characteristic">The characteristic to subscribe to, or null if it wasn't found (only adds the not-found warning).</param>
+    /// <param name="characteristic">The characteristic to subscribe to, or null if it wasn't found (then only the not-found warning is added, if <paramref name="spec"/> has one).</param>
     /// <param name="spec">The CCCD mode, handler storage, event to raise and warnings to use.</param>
-    /// <returns>A task that completes once the CCCD write has finished; a missing characteristic or a failed CCCD write is recorded in <see cref="LastConnectWarnings"/> rather than thrown.</returns>
+    /// <returns>A task that completes once the CCCD write has finished. A non-success CCCD status is recorded in <see cref="LastConnectWarnings"/>; an exception from the write propagates.</returns>
     private async Task SubscribeAsync(GattCharacteristic? characteristic, SubscriptionSpec spec)
     {
         if (characteristic == null)

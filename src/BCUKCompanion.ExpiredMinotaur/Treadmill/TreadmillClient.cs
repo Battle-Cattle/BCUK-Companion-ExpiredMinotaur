@@ -394,7 +394,7 @@ public sealed class TreadmillClient : IDisposable
     /// </summary>
     /// <param name="deltaKmh">How much to change the speed by, in km/h; negative slows down.</param>
     /// <param name="cancellationToken">Cancels waiting for the write lock (the method then returns false).</param>
-    /// <returns>A task completing with true if the treadmill accepted the new target; false if disconnected, cancelled, rejected or the write failed. Never throws.</returns>
+    /// <returns>A task completing with true if the treadmill accepted the new target; false if disconnected, cancelled, rejected or the write failed. Device and write errors are reported as false, but an exception thrown by a <see cref="StatusChanged"/> handler propagates.</returns>
     public async Task<bool> NudgeSpeedAsync(double deltaKmh, CancellationToken cancellationToken = default)
     {
         if (!IsConnected || controlPointService is null)
