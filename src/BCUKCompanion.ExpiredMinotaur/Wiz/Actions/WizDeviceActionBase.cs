@@ -19,6 +19,7 @@ public abstract class WizDeviceActionBase : IEventAction
 
     /// <summary>Describes the action for the mappings list, e.g. "Desk lamp: TurnOn".</summary>
     /// <param name="context">Provides the device list, to show the device's name.</param>
+    /// <returns>"Device name: action", with "(unknown device)" if the device is no longer in the list.</returns>
     public string Describe(IEventActionContext context)
     {
         var device = context.GetService<WizActionContext>()?.ResolveDevice(DeviceId);
@@ -65,6 +66,7 @@ public abstract class WizDeviceActionBase : IEventAction
     }
 
     /// <summary>The action-specific part of <see cref="Describe"/>, e.g. "SetBrightness 50%".</summary>
+    /// <returns>The text shown after the device name.</returns>
     protected abstract string DescribeAction();
 
     /// <summary>Checks the device supports what this action sets, and that its values are in range.</summary>
@@ -73,6 +75,7 @@ public abstract class WizDeviceActionBase : IEventAction
     protected abstract IReadOnlyList<string> ValidateDeviceSpecific(WizDevice device);
 
     /// <summary>The <c>setPilot</c> params to send. Override this or <see cref="BuildPayloadAsync"/>.</summary>
+    /// <returns>An object serialized as the <c>setPilot</c> request's <c>params</c>.</returns>
     protected virtual object BuildPayload()
         => throw new NotSupportedException($"{GetType().Name} must override {nameof(BuildPayload)} or {nameof(BuildPayloadAsync)}.");
 
@@ -80,6 +83,7 @@ public abstract class WizDeviceActionBase : IEventAction
     /// <param name="client">The client to query the device with.</param>
     /// <param name="device">The target device.</param>
     /// <param name="cancellationToken">Cancels any query.</param>
+    /// <returns>A task completing with an object serialized as the <c>setPilot</c> request's <c>params</c>.</returns>
     protected virtual Task<object> BuildPayloadAsync(WizClient client, WizDevice device, CancellationToken cancellationToken)
         => Task.FromResult(BuildPayload());
 

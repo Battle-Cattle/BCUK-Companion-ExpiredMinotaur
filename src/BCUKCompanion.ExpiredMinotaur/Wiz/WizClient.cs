@@ -64,6 +64,7 @@ public sealed class WizClient
     /// (a reply with no <c>success</c> field counts as success). Unparsable replies count as failure.
     /// </summary>
     /// <param name="response">The reply's JSON text.</param>
+    /// <returns>True if the device reported success; false for an error, <c>success: false</c> or an unparsable reply.</returns>
     internal static bool ParseSetPilotResponse(string response)
     {
         try
@@ -133,6 +134,7 @@ public sealed class WizClient
     /// </summary>
     /// <param name="listenWindow">How long to listen; defaults to <see cref="DefaultDiscoveryWindow"/>.</param>
     /// <param name="cancellationToken">Ends discovery early.</param>
+    /// <returns>Each device that replied, as it replies; a device answering more than once is yielded only once.</returns>
     public async IAsyncEnumerable<WizDiscoveredDevice> DiscoverAsync(
         TimeSpan? listenWindow = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -220,6 +222,10 @@ public sealed class WizClient
     /// <see cref="SendAttempts"/> times, evenly spaced across <paramref name="timeout"/>, until one
     /// arrives. All attempts share one socket, so a late reply to an earlier attempt still counts.
     /// </summary>
+    /// <param name="ipAddress">The device's IP address, as text.</param>
+    /// <param name="request">The command to send, serialized as JSON.</param>
+    /// <param name="timeout">The total time to wait for a reply, split evenly across the attempts.</param>
+    /// <param name="cancellationToken">Cancels the exchange, which then returns null.</param>
     /// <returns>The reply's text, or null if none arrived in time (or the address is invalid).</returns>
     private static async Task<string?> SendAndReceiveAsync(
         string ipAddress, WizRequest request, TimeSpan timeout, CancellationToken cancellationToken)
@@ -268,6 +274,10 @@ public sealed class WizClient
     /// another Wiz device's own reply) can land on this ephemeral socket and must not be mistaken
     /// for the intended device's response.
     /// </summary>
+    /// <param name="udp">The socket the request was sent from.</param>
+    /// <param name="targetAddress">The device's address; datagrams from any other host are ignored.</param>
+    /// <param name="window">How long to wait for the reply.</param>
+    /// <param name="cancellationToken">The caller's token; cancelling it throws rather than returning null.</param>
     /// <returns>The reply's text, or null if the window passed without one.</returns>
     /// <exception cref="OperationCanceledException">The caller's token was canceled.</exception>
     private static async Task<string?> ReceiveFromAsync(

@@ -35,6 +35,7 @@ public sealed class TreadmillActionEditor : EventActionEditor
 
     /// <summary>True for <see cref="TreadmillNudgeSpeedAction"/>.</summary>
     /// <param name="action">The action being edited.</param>
+    /// <returns>True if <paramref name="action"/> is a <see cref="TreadmillNudgeSpeedAction"/>; otherwise false.</returns>
     public override bool CanEdit(IEventAction action) => action is TreadmillNudgeSpeedAction;
 
     /// <summary>Shows an existing action's delta.</summary>
@@ -44,6 +45,7 @@ public sealed class TreadmillActionEditor : EventActionEditor
 
     /// <summary>Builds a NudgeSpeed action from the delta, which must be a finite number.</summary>
     /// <param name="error">Why the input can't be used, when null is returned.</param>
+    /// <returns>A new action with the entered delta, or null if the delta isn't a finite number.</returns>
     public override IEventAction? TryBuild(out string? error)
     {
         if (!double.TryParse(deltaBox.Text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var delta)

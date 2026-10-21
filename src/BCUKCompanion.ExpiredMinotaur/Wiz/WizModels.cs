@@ -28,5 +28,6 @@ public sealed record WizDevice(
     bool SupportsDimming)
 {
     /// <summary>The device as shown in lists, e.g. "Desk lamp (192.168.1.20) - Light".</summary>
+    /// <returns>The name, IP address and device type.</returns>
     public override string ToString() => $"{Name} ({IpAddress}) - {DeviceType}";
 }

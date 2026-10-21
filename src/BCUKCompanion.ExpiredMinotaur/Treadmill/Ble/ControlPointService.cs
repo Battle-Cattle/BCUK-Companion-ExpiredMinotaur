@@ -27,14 +27,17 @@ public class ControlPointService
     }
 
     /// <summary>Asks the treadmill for control, which it must accept before any other command.</summary>
+    /// <returns>A task completing with the write's outcome and the treadmill's response.</returns>
     public Task<ControlPointWriteResult> RequestControlAsync() =>
         _device.WriteControlPointAndAwaitAsync(new[] { FtmsConstants.Opcode.RequestControl });
 
     /// <summary>Starts or resumes the belt.</summary>
+    /// <returns>A task completing with the write's outcome and the treadmill's response.</returns>
     public Task<ControlPointWriteResult> StartOrResumeAsync() =>
         _device.WriteControlPointAndAwaitAsync(new[] { FtmsConstants.Opcode.StartOrResume });
 
     /// <summary>Stops the belt (opcode 0x08 with parameter 0x01 = Stop; 0x02 would be Pause).</summary>
+    /// <returns>A task completing with the write's outcome and the treadmill's response.</returns>
     public Task<ControlPointWriteResult> StopAsync() =>
         _device.WriteControlPointAndAwaitAsync(new byte[] { FtmsConstants.Opcode.StopOrPause, 0x01 });
 

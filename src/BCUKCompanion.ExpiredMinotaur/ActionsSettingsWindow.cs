@@ -115,19 +115,23 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
     }
 
     /// <summary>Snapshots the window's current devices and mappings for saving or testing.</summary>
+    /// <returns>A new config holding copies of the device list and the mappings.</returns>
     protected override ActionsConfig BuildConfig() => new() { Devices = devices.ToList(), Mappings = Mappings.ToList() };
 
     /// <summary>The Wiz and treadmill contexts the mapped actions validate and run against.</summary>
+    /// <returns>A composite of a Wiz context over the window's device list and a treadmill context.</returns>
     protected override IEventActionContext BuildContext() =>
         new CompositeEventActionContext(new WizActionContext(wizClient, devices), new TreadmillActionContext(treadmillClient));
 
     /// <summary>
     /// The categories the shell's Add/Edit Action dialog offers, before its built-in Delay.
     /// </summary>
+    /// <returns>The Wiz editor (over the window's device list) and the treadmill editor.</returns>
     protected override IEnumerable<EventActionEditor> CreateActionEditors() =>
         [new WizActionEditor(devices), new TreadmillActionEditor()];
 
     /// <summary>Builds the "Devices" tab: the Wiz device list and its Add/Edit/Remove/Discover buttons.</summary>
+    /// <returns>The tab's content.</returns>
     private UIElement BuildDevicesTab()
     {
         devicesList.ItemsSource = devices;
@@ -251,6 +255,8 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
     /// and blocking that thread on the UI thread would deadlock if the UI thread ever waited on
     /// the same lock.
     /// </remarks>
+    /// <param name="sender">The <see cref="TreadmillClient"/> that raised the event.</param>
+    /// <param name="message">The status text to show.</param>
     private void OnTreadmillStatusChanged(object? sender, string message) =>
         _ = Dispatcher.InvokeAsync(() => treadmillStatusText.Text = message);
 
@@ -278,6 +284,7 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
     }
 
     /// <summary>Connects the treadmill, showing any failure in the status line.</summary>
+    /// <returns>A task that completes once the attempt has finished, successful or not.</returns>
     private async Task OnTreadmillConnectAsync()
     {
         treadmillConnectionOperationInProgress = true;
@@ -298,6 +305,7 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
     }
 
     /// <summary>Disconnects the treadmill, showing any failure in the status line.</summary>
+    /// <returns>A task that completes once the attempt has finished, successful or not.</returns>
     private async Task OnTreadmillDisconnectAsync()
     {
         treadmillConnectionOperationInProgress = true;

@@ -145,6 +145,7 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
     /// <param name="options">Serializer options that can read the file's actions.</param>
     /// <param name="isValid">Checks the parsed file's required collections are present.</param>
     /// <param name="onSuccess">Takes the parsed file's contents.</param>
+    /// <returns>True if the file was read, parsed and validated and <paramref name="onSuccess"/> ran; false otherwise.</returns>
     private static bool TryDeserializeLegacyFile<TLegacy>(
         string path, JsonSerializerOptions options, Func<TLegacy, bool> isValid, Action<TLegacy> onSuccess)
     {

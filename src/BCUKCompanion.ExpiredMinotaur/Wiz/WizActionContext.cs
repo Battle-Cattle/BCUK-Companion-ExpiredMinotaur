@@ -18,5 +18,6 @@ public sealed class WizActionContext(WizClient client, IReadOnlyList<WizDevice> 
 
     /// <summary>Returns this context for <see cref="WizActionContext"/>, and null for any other type.</summary>
     /// <param name="serviceType">The type being asked for.</param>
+    /// <returns>This context when <paramref name="serviceType"/> is <see cref="WizActionContext"/>; otherwise null.</returns>
     public object? GetService(Type serviceType) => serviceType == typeof(WizActionContext) ? this : null;
 }

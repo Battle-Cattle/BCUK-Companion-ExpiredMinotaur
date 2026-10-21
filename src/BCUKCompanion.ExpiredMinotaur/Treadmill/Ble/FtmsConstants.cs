@@ -73,6 +73,8 @@ public static class FtmsConstants
     public const double SpeedStepKmh = 0.5;
 
     /// <summary>Expands a 16-bit Bluetooth SIG UUID into the full 128-bit form on the Bluetooth Base UUID.</summary>
+    /// <param name="shortUuid">The 16-bit assigned number, e.g. 0x1826 for the Fitness Machine service.</param>
+    /// <returns>The full 128-bit UUID, 0000xxxx-0000-1000-8000-00805f9b34fb.</returns>
     private static Guid ToGuid(ushort shortUuid)
     {
         // Bluetooth Base UUID: 0000xxxx-0000-1000-8000-00805F9B34FB
