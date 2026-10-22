@@ -90,7 +90,7 @@ public sealed class WizDeviceEditDialog : Window
             return;
         }
 
-        if (!System.Net.IPAddress.TryParse(ip, out _))
+        if (!WizAddress.IsValid(ip))
         {
             errorText.Text = "Enter a valid IP address.";
             return;
