@@ -41,9 +41,10 @@ setup stay in this repo.
 ## Building
 
 This is a Windows app (WPF + WinForms via `BCUKCompanion.TrayApp.Shell`). It
-only *runs* on Windows, but it compiles on Linux with
-`-p:EnableWindowsTargeting=true`, which fetches the Windows reference packs from
-NuGet (without it, the build fails with `MSB4236`).
+only *runs* on Windows, but it compiles on Linux: `Directory.Build.props` sets
+`EnableWindowsTargeting`, which fetches the Windows reference packs from NuGet
+(without it, restore fails with `NETSDK1100`). GitHub's automatic dependency
+submission relies on that too: it restores every project on Linux.
 
 Restoring requires read access to the org's GitHub Packages feed
 (`https://nuget.pkg.github.com/Battle-Cattle/index.json`, configured in
@@ -66,8 +67,8 @@ cat > /tmp/nuget.org.config <<'XML'
 <?xml version="1.0" encoding="utf-8"?>
 <configuration><packageSources><clear /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>
 XML
-dotnet restore --configfile /tmp/nuget.org.config -p:EnableWindowsTargeting=true -p:UseLocalCore=true
-dotnet build --no-restore -p:EnableWindowsTargeting=true -p:UseLocalCore=true
+dotnet restore --configfile /tmp/nuget.org.config -p:UseLocalCore=true
+dotnet build --no-restore -p:UseLocalCore=true
 ```
 
 Check out the Core version this repo pins (see Versioning), or the build tests
