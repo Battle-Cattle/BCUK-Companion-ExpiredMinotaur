@@ -72,6 +72,21 @@ public sealed class ActionsConfigStoreTests : IDisposable
         Assert.Equal([good, alsoGood], config.Devices);
     }
 
+    [Theory]
+    [InlineData("192.168.1")]
+    [InlineData("10.5")]
+    [InlineData("3232235777")]
+    public void Load_DeviceWithShorthandIp_IsDropped(string shorthand)
+    {
+        var good = new WizDevice(DeviceId, "Desk", "192.168.1.20", WizDeviceType.Light, true, true, true);
+        var typo = good with { Id = Guid.NewGuid(), Name = "Typo", IpAddress = shorthand };
+        store.Save(new ActionsConfig { Devices = [good, typo] });
+
+        var config = store.Load();
+
+        Assert.Equal([good], config.Devices);
+    }
+
     [Fact]
     public void Load_AllDevicesValid_ReturnsThemUnchanged()
     {

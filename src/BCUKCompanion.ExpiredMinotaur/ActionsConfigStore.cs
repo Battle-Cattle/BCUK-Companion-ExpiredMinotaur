@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Net;
 using System.Text.Json;
 using BCUKCompanion.Core.Actions;
 using BCUKCompanion.ExpiredMinotaur.Wiz;
@@ -40,9 +39,10 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
     }
 
     /// <summary>
-    /// Drops devices with an unparsable IpAddress (e.g. from a hand-edited actions-config.json),
-    /// in addition to the base class's whole-file corruption handling, so they never reach
-    /// runtime code such as WizClient, which needs a valid IP to operate on.
+    /// Drops devices whose IpAddress isn't valid (see <see cref="WizAddress.IsValid"/>), e.g. a
+    /// shorthand typo in a hand-edited actions-config.json, in addition to the base class's
+    /// whole-file corruption handling, so they never reach runtime code such as WizClient, which
+    /// needs a valid IP to operate on.
     /// </summary>
     /// <param name="config">The config as read from disk (or migrated).</param>
     /// <returns><paramref name="config"/>, minus any invalid devices.</returns>
@@ -52,7 +52,7 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
         for (var i = 0; i < config.Devices.Count; i++)
         {
             var device = config.Devices[i];
-            if (IPAddress.TryParse(device.IpAddress, out _))
+            if (WizAddress.IsValid(device.IpAddress))
             {
                 validDevices?.Add(device);
                 continue;
