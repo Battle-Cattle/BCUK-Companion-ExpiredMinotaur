@@ -43,8 +43,11 @@ setup stay in this repo.
 This is a Windows app (WPF + WinForms via `BCUKCompanion.TrayApp.Shell`). It
 only *runs* on Windows, but it compiles on Linux: `Directory.Build.props` sets
 `EnableWindowsTargeting`, which fetches the Windows reference packs from NuGet
-(without it, restore fails with `NETSDK1100`). GitHub's automatic dependency
-submission relies on that too: it restores every project on Linux.
+(without it, restore fails with `NETSDK1100`).
+
+GitHub's automatic dependency submission is turned off for this repo. Its job
+restores on Linux without the `PACKAGES_READ_PAT` secret, so the private feed
+below answers 401. Dependabot still raises NuGet updates with its own credentials.
 
 Restoring requires read access to the org's GitHub Packages feed
 (`https://nuget.pkg.github.com/Battle-Cattle/index.json`, configured in

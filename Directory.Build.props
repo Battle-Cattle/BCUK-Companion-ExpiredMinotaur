@@ -15,8 +15,8 @@
   <PropertyGroup>
     <!--
       The app and its tests target net10.0-windows. This lets them restore and build on Linux and
-      macOS too (fetching the Windows reference packs from NuGet), which GitHub's automatic dependency
-      submission and the Linux build in CLAUDE.md both need. They still only run on Windows.
+      macOS too (fetching the Windows reference packs from NuGet), which the Linux build in
+      CLAUDE.md needs. They still only run on Windows.
     -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
