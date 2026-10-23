@@ -36,14 +36,15 @@ jobs:
       # Reuse the nuget.org packages between runs. The key covers every file that decides what
       # gets restored. Pull requests (forks included) can read caches saved on main, so the
       # private GitHub Packages feed's BCUKCompanion.* packages are deleted before saving (below)
-      # and always come from the feed, with PACKAGES_READ_PAT.
+      # and always come from the feed, with PACKAGES_READ_PAT. "public" in the key keeps it from
+      # matching a cache saved before that pruning existed.
       - name: Restore NuGet cache
         id: nuget-cache
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.*.props', 'NuGet.config') }}
-          restore-keys: nuget-${{ runner.os }}-
+          key: nuget-public-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.*.props', 'NuGet.config') }}
+          restore-keys: nuget-public-${{ runner.os }}-
       - name: Restore
         run: dotnet restore
         env:
