@@ -4,6 +4,19 @@ on:
   push:
     branches: [main]
   pull_request:
+  # release.yml calls this before publishing, so a release only ships from a commit whose
+  # tests pass.
+  workflow_call:
+    inputs:
+      ref:
+        description: "Commit or tag to build and test (defaults to the triggering ref)"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      PACKAGES_READ_PAT:
+        description: "Classic PAT with read:packages, to restore BCUKCompanion.* from GitHub Packages"
+        required: true
 
 permissions:
   contents: read
@@ -15,10 +28,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: "10.0.x"
+      # Restores pull from both the private GitHub Packages feed and nuget.org, so reuse the
+      # package folder between runs. The key covers every file that decides what gets restored.
+      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.*.props', 'NuGet.config') }}
+          restore-keys: nuget-${{ runner.os }}-
       - name: Restore
         run: dotnet restore
         env:

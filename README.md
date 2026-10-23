@@ -51,8 +51,9 @@ update themselves.
 ## Releasing
 
 Bump the version in `VERSION` (e.g. `1.0.0` → `1.1.0`) and merge to `main`.
-The `Release` workflow then tags the merge commit `v1.1.0`, builds the app,
-zips it and attaches it (with a `.sha256` checksum) to a new GitHub Release
+The `Release` workflow first builds and tests that commit (the same `.NET` job
+pull requests run), and stops there if the tests fail. Otherwise it tags the
+merge commit `v1.1.0`, builds the app, zips it and attaches it (with a `.sha256` checksum) to a new GitHub Release
 with auto-generated notes.
 Installed copies pick it up on their next launch. Merging a `VERSION` that
 already has a release does nothing.

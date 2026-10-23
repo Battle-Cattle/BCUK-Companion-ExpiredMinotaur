@@ -6,6 +6,8 @@ name: Release
 # - Bump the version in VERSION and merge to main: tags v<VERSION> and releases it.
 # - Push a version tag, e.g. git tag v1.0.0 && git push origin v1.0.0
 # - Run manually from the Actions tab with an already-pushed tag (e.g. to retry a failed run).
+# Each way first builds and tests the commit being released (dotnet.yml), and only publishes if
+# that passes: Core's companion-release.yml publishes without running the tests.
 
 on:
   push:
@@ -22,7 +24,16 @@ permissions:
   contents: read
 
 jobs:
+  test:
+    uses: ./.github/workflows/dotnet.yml
+    with:
+      # The same commit companion-release.yml builds: the tag on a manual run, else the pushed commit.
+      ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.sha }}
+    secrets:
+      PACKAGES_READ_PAT: ${{ secrets.PACKAGES_READ_PAT }}
+
   release:
+    needs: test
     # Pinned to a commit, like the actions in dotnet.yml: a later push to Core's main must not
     # change what this repo's release runs. Bump it deliberately, as with the package versions.
     uses: Battle-Cattle/BCUK-Companion-Core/.github/workflows/companion-release.yml@76f867548a8507c9393fc4a9f47176190c97ad99 # Core 0.17.4 / Shell 0.16.3
