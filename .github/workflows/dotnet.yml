@@ -4,6 +4,19 @@ on:
   push:
     branches: [main]
   pull_request:
+  # release.yml calls this before publishing, so a release only ships from a commit whose
+  # tests pass.
+  workflow_call:
+    inputs:
+      ref:
+        description: "Commit or tag to build and test (defaults to the triggering ref)"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      PACKAGES_READ_PAT:
+        description: "Classic PAT with read:packages, to restore BCUKCompanion.* from GitHub Packages"
+        required: true
 
 permissions:
   contents: read
@@ -15,10 +28,23 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: "10.0.x"
+      # Reuse the nuget.org packages between runs. The key covers every file that decides what
+      # gets restored. Pull requests (forks included) can read caches saved on main, so the
+      # private GitHub Packages feed's BCUKCompanion.* packages are deleted before saving (below)
+      # and always come from the feed, with PACKAGES_READ_PAT. "public" in the key keeps it from
+      # matching a cache saved before that pruning existed.
+      - name: Restore NuGet cache
+        id: nuget-cache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-public-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.*.props', 'NuGet.config') }}
+          restore-keys: nuget-public-${{ runner.os }}-
       - name: Restore
         run: dotnet restore
         env:
@@ -28,3 +54,13 @@ jobs:
         run: dotnet build --no-restore --configuration Release
       - name: Test
         run: dotnet test --no-build --configuration Release
+      - name: Drop private packages from the NuGet cache
+        if: steps.nuget-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: Get-ChildItem "$HOME/.nuget/packages" -Directory -Filter 'bcukcompanion.*' | Remove-Item -Recurse -Force
+      - name: Save NuGet cache
+        if: steps.nuget-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ steps.nuget-cache.outputs.cache-primary-key }}
