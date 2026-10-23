@@ -47,8 +47,8 @@ public sealed class WizDeviceEditDialog : Window
         var okButton = new Button { Content = "OK", Width = 80, Margin = new Thickness(0, 0, 8, 0) };
         okButton.Click += (_, _) => OnOk();
 
+        // IsCancel already closes the modal dialog with DialogResult = false (Esc too).
         var cancelButton = new Button { Content = "Cancel", Width = 80, IsCancel = true };
-        cancelButton.Click += (_, _) => { DialogResult = false; };
 
         var buttonPanel = new StackPanel
         {

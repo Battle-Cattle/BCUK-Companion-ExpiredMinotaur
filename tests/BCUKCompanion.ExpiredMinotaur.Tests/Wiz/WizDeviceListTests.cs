@@ -64,4 +64,20 @@ public sealed class WizDeviceListTests
         Assert.True(WizDeviceList.IsDuplicateIp([Device("Lamp.Local")], "lamp.local"));
         Assert.False(WizDeviceList.IsDuplicateIp([Device("lamp.local")], "desk.local"));
     }
+
+    [Theory]
+    [InlineData(0, "Updated device.")]
+    [InlineData(2, "Updated device and removed 2 action(s) no longer valid for it.")]
+    public void UpdatedMessage_MentionsRemovedActionsOnlyWhenThereWereAny(int removed, string expected)
+    {
+        Assert.Equal(expected, WizDeviceList.UpdatedMessage(removed));
+    }
+
+    [Theory]
+    [InlineData(0, "Removed device.")]
+    [InlineData(3, "Removed device and 3 action(s) that referenced it.")]
+    public void RemovedMessage_MentionsRemovedActionsOnlyWhenThereWereAny(int removed, string expected)
+    {
+        Assert.Equal(expected, WizDeviceList.RemovedMessage(removed));
+    }
 }
