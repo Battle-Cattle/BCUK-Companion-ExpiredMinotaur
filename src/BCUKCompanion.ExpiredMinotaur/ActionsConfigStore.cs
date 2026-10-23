@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.IO;
-using System.Text.Json;
 using BCUKCompanion.Core.Actions;
 using BCUKCompanion.ExpiredMinotaur.Wiz;
 
@@ -13,11 +11,6 @@ namespace BCUKCompanion.ExpiredMinotaur;
 public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeRegistry registry)
     : EventActionConfigStore<ActionsConfig>(dataFolderName, "actions-config.json", registry)
 {
-    // Copied into an explicit field (rather than referencing the primary constructor parameter
-    // from a method) so the parameter isn't captured as well as passed to the base constructor
-    // (CS9107).
-    private readonly EventActionTypeRegistry registry = registry;
-
     // Shapes of the two per-integration config files this replaced (wiz-config.json,
     // treadmill-config.json), kept only so a pre-consolidation install's devices and mappings
     // can be migrated into actions-config.json instead of silently disappearing.
@@ -81,38 +74,29 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
     /// <returns>The migrated config, or a new one on a fresh install.</returns>
     protected override ActionsConfig CreateWhenMissing()
     {
-        var directory = Path.GetDirectoryName(ConfigFilePath)!;
-        var wizPath = Path.Combine(directory, "wiz-config.json");
-        var treadmillPath = Path.Combine(directory, "treadmill-config.json");
-
-        if (!File.Exists(wizPath) && !File.Exists(treadmillPath))
-        {
-            return new ActionsConfig();
-        }
-
-        var options = new JsonSerializerOptions { Converters = { new EventActionJsonConverter(registry) } };
         var devices = new List<WizDevice>();
         var mappings = new List<EventActionMapping>();
-        var migratedEverything = true;
+        var migration = BeginLegacyMigration();
 
-        if (File.Exists(wizPath))
-        {
-            migratedEverything &= TryDeserializeLegacyFile<LegacyWizConfig>(
-                wizPath, options,
-                legacy => legacy.Devices is not null && legacy.Mappings is not null,
-                legacy =>
-                {
-                    devices.AddRange(legacy.Devices);
-                    mappings.AddRange(legacy.Mappings);
-                });
-        }
+        // isValid guards against a legacy file with an explicit JSON "null" for a required
+        // collection: System.Text.Json sets the property to null (overriding the record's []
+        // default), and AddRange(null) would throw. Core counts that as a failed read.
+        migration.Read<LegacyWizConfig>(
+            "wiz-config.json",
+            legacy => legacy.Devices is not null && legacy.Mappings is not null,
+            legacy =>
+            {
+                devices.AddRange(legacy.Devices);
+                mappings.AddRange(legacy.Mappings);
+            });
+        migration.Read<LegacyTreadmillConfig>(
+            "treadmill-config.json",
+            legacy => legacy.Mappings is not null,
+            legacy => mappings.AddRange(legacy.Mappings));
 
-        if (File.Exists(treadmillPath))
+        if (!migration.FoundAny)
         {
-            migratedEverything &= TryDeserializeLegacyFile<LegacyTreadmillConfig>(
-                treadmillPath, options,
-                legacy => legacy.Mappings is not null,
-                legacy => mappings.AddRange(legacy.Mappings));
+            return new ActionsConfig();
         }
 
         var migrated = new ActionsConfig { Devices = devices, Mappings = mappings };
@@ -122,55 +106,11 @@ public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeReg
         // make actions-config.json exist from then on, and Load() only migrates when it's
         // still missing, permanently losing whatever the failed file held. Save() re-enters
         // the lock Load() holds while calling this, which is safe (it's a Monitor).
-        if (migratedEverything)
+        if (migration.Succeeded)
         {
             Save(migrated);
         }
 
         return migrated;
-    }
-
-    /// <summary>
-    /// Reads one legacy config file and hands it to <paramref name="onSuccess"/>, or returns false
-    /// if it can't be read, parsed or validated.
-    /// </summary>
-    /// <remarks>
-    /// <paramref name="isValid"/> guards against a legacy file with an explicit JSON "null" for a
-    /// required collection: System.Text.Json sets the property to null in that case (overriding
-    /// the record's [] init default), and AddRange(null) would throw. Treat that the same as any
-    /// other unreadable legacy file - a failed migration, not a crash.
-    /// </remarks>
-    /// <typeparam name="TLegacy">The legacy file's shape.</typeparam>
-    /// <param name="path">The legacy file.</param>
-    /// <param name="options">Serializer options that can read the file's actions.</param>
-    /// <param name="isValid">Checks the parsed file's required collections are present.</param>
-    /// <param name="onSuccess">Takes the parsed file's contents.</param>
-    /// <returns>True if the file was read, parsed and validated and <paramref name="onSuccess"/> ran; false otherwise.</returns>
-    private static bool TryDeserializeLegacyFile<TLegacy>(
-        string path, JsonSerializerOptions options, Func<TLegacy, bool> isValid, Action<TLegacy> onSuccess)
-    {
-        try
-        {
-            var legacy = JsonSerializer.Deserialize<TLegacy>(File.ReadAllText(path), options);
-            if (legacy is null)
-            {
-                Debug.WriteLine($"Failed to migrate legacy config '{path}': deserialized to null.");
-                return false;
-            }
-
-            if (!isValid(legacy))
-            {
-                Debug.WriteLine($"Failed to migrate legacy config '{path}': a required collection was null.");
-                return false;
-            }
-
-            onSuccess(legacy);
-            return true;
-        }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
-        {
-            Debug.WriteLine($"Failed to migrate legacy config '{path}': {ex}");
-            return false;
-        }
     }
 }
