@@ -36,7 +36,7 @@ jobs:
     needs: test
     # Pinned to a commit, like the actions in dotnet.yml: a later push to Core's main must not
     # change what this repo's release runs. Bump it deliberately, as with the package versions.
-    uses: Battle-Cattle/BCUK-Companion-Core/.github/workflows/companion-release.yml@76f867548a8507c9393fc4a9f47176190c97ad99 # Core 0.17.4 / Shell 0.16.3
+    uses: Battle-Cattle/BCUK-Companion-Core/.github/workflows/companion-release.yml@02bd86d2bc812d0dd0121e5d5d3f3917475cc535 # Core 0.18.0 / Shell 0.16.3
     permissions:
       contents: write
     with:
