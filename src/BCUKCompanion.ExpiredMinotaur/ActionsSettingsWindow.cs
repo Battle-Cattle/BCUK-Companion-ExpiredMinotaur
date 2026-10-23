@@ -170,7 +170,7 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
         var dialog = new WizDeviceEditDialog { Owner = this };
         if (dialog.ShowDialog() == true && dialog.Result is { } device)
         {
-            if (devices.Any(d => string.Equals(d.IpAddress, device.IpAddress, StringComparison.OrdinalIgnoreCase)))
+            if (WizDeviceList.IsDuplicateIp(devices, device.IpAddress))
             {
                 StatusText.Text = "A device with that IP address already exists.";
                 return;
@@ -196,8 +196,7 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
         var dialog = new WizDeviceEditDialog(selected) { Owner = this };
         if (dialog.ShowDialog() == true && dialog.Result is { } updated)
         {
-            if (devices.Any(d => d.Id != updated.Id
-                && string.Equals(d.IpAddress, updated.IpAddress, StringComparison.OrdinalIgnoreCase)))
+            if (WizDeviceList.IsDuplicateIp(devices, updated.IpAddress, exceptId: updated.Id))
             {
                 StatusText.Text = "A device with that IP address already exists.";
                 return;
