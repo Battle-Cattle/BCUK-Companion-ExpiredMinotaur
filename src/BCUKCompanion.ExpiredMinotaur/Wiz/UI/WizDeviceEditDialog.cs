@@ -1,10 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
-using Button = System.Windows.Controls.Button;
+using BCUKCompanion.TrayApp;
 using CheckBox = System.Windows.Controls.CheckBox;
 using ComboBox = System.Windows.Controls.ComboBox;
-using HorizontalAlignment = System.Windows.HorizontalAlignment;
-using Orientation = System.Windows.Controls.Orientation;
 using TextBox = System.Windows.Controls.TextBox;
 
 namespace BCUKCompanion.ExpiredMinotaur.Wiz.UI;
@@ -44,20 +42,6 @@ public sealed class WizDeviceEditDialog : Window
         colorTempCheck.IsChecked = existing?.SupportsColorTemperature ?? false;
         dimmingCheck.IsChecked = existing?.SupportsDimming ?? true;
 
-        var okButton = new Button { Content = "OK", Width = 80, Margin = new Thickness(0, 0, 8, 0) };
-        okButton.Click += (_, _) => OnOk();
-
-        // IsCancel already closes the modal dialog with DialogResult = false (Esc too).
-        var cancelButton = new Button { Content = "Cancel", Width = 80, IsCancel = true };
-
-        var buttonPanel = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 12, 0, 0),
-            Children = { okButton, cancelButton },
-        };
-
         Content = new StackPanel
         {
             Margin = new Thickness(12),
@@ -73,7 +57,7 @@ public sealed class WizDeviceEditDialog : Window
                 colorTempCheck,
                 dimmingCheck,
                 errorText,
-                buttonPanel,
+                DialogButtons.Create(OnOk),
             },
         };
     }
