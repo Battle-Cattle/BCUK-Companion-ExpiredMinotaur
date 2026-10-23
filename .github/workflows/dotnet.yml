@@ -33,9 +33,13 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: "10.0.x"
-      # Restores pull from both the private GitHub Packages feed and nuget.org, so reuse the
-      # package folder between runs. The key covers every file that decides what gets restored.
-      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      # Reuse the nuget.org packages between runs. The key covers every file that decides what
+      # gets restored. Pull requests (forks included) can read caches saved on main, so the
+      # private GitHub Packages feed's BCUKCompanion.* packages are deleted before saving (below)
+      # and always come from the feed, with PACKAGES_READ_PAT.
+      - name: Restore NuGet cache
+        id: nuget-cache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.*.props', 'NuGet.config') }}
@@ -49,3 +53,13 @@ jobs:
         run: dotnet build --no-restore --configuration Release
       - name: Test
         run: dotnet test --no-build --configuration Release
+      - name: Drop private packages from the NuGet cache
+        if: steps.nuget-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: Get-ChildItem "$HOME/.nuget/packages" -Directory -Filter 'bcukcompanion.*' | Remove-Item -Recurse -Force
+      - name: Save NuGet cache
+        if: steps.nuget-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ steps.nuget-cache.outputs.cache-primary-key }}
