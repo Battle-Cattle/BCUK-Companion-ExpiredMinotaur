@@ -26,8 +26,8 @@ permissions:
 jobs:
   test:
     uses: ./.github/workflows/dotnet.yml
-    # dotnet.yml's build job asks for id-token: write (its Qlty coverage upload), and a called
-    # workflow can't be granted more than its caller passes on.
+    # dotnet.yml's coverage job asks for id-token: write (its Qlty upload), and a called workflow
+    # can't be granted more than its caller passes on.
     permissions:
       contents: read
       id-token: write
