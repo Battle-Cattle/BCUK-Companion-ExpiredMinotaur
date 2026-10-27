@@ -25,6 +25,10 @@ jobs:
   build:
     name: Build (Windows)
     runs-on: windows-latest
+    permissions:
+      contents: read
+      # Lets qlty-action exchange GitHub's OIDC token for a Qlty upload, instead of a stored coverage token.
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -52,8 +56,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PACKAGES_READ_PAT }}
       - name: Build
         run: dotnet build --no-restore --configuration Release
+      # coverage.runsettings writes lcov coverage under coverage/ for the Qlty upload.
       - name: Test
-        run: dotnet test --no-build --configuration Release
+        run: dotnet test --no-build --configuration Release --settings coverage.runsettings --results-directory coverage
+      - name: Publish coverage to Qlty
+        if: always()
+        uses: qltysh/qlty-action/coverage@ebcd284bf32e36a030afe15f1e136c7be08b9506 # v2.5.0
+        with:
+          oidc: true
+          files: coverage/**/coverage.info
       - name: Drop private packages from the NuGet cache
         if: steps.nuget-cache.outputs.cache-hit != 'true'
         shell: pwsh

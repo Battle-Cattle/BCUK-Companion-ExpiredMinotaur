@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Coverage for the Qlty upload in .github/workflows/dotnet.yml, which passes this file to dotnet test. -->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Format>lcov</Format>
+          <!-- Only this app; the Core/Shell packages and the test assembly stay out of the report. -->
+          <Include>[BCUKCompanion.ExpiredMinotaur]*</Include>
+          <ExcludeByFile>**/obj/**</ExcludeByFile>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>
