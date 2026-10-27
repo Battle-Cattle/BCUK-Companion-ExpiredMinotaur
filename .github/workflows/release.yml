@@ -26,6 +26,11 @@ permissions:
 jobs:
   test:
     uses: ./.github/workflows/dotnet.yml
+    # dotnet.yml's coverage job asks for id-token: write (its Qlty upload), and a called workflow
+    # can't be granted more than its caller passes on.
+    permissions:
+      contents: read
+      id-token: write
     with:
       # The same commit companion-release.yml builds: the tag on a manual run, else the pushed commit.
       ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.sha }}

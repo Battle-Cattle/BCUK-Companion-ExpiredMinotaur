@@ -52,8 +52,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PACKAGES_READ_PAT }}
       - name: Build
         run: dotnet build --no-restore --configuration Release
+      # coverage.runsettings writes lcov coverage under coverage/ for the Qlty upload.
       - name: Test
-        run: dotnet test --no-build --configuration Release
+        run: dotnet test --no-build --configuration Release --settings coverage.runsettings --results-directory coverage
+      # The coverage job below publishes this to Qlty.
+      - name: Keep lcov coverage for the Qlty upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 1
       - name: Drop private packages from the NuGet cache
         if: steps.nuget-cache.outputs.cache-hit != 'true'
         shell: pwsh
@@ -64,3 +72,36 @@ jobs:
         with:
           path: ~/.nuget/packages
           key: ${{ steps.nuget-cache.outputs.cache-primary-key }}
+
+  # Publishes coverage in a job of its own, so only this job can mint the OIDC token qlty-action
+  # trades for a Qlty upload; the restore, build and test steps never see it. GitHub gives fork
+  # and Dependabot pull requests no OIDC token, and qlty-action fails the job when it can't get
+  # one, so those runs skip the upload.
+  # It also waits for its test job to pass: a failed one leaves no report to upload.
+  coverage:
+    name: Publish coverage to Qlty
+    needs: build
+    if: >-
+      needs.build.result == 'success' &&
+      (github.event_name != 'pull_request' ||
+       (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      # Qlty checks the report's source paths against the checkout, which lands at the same path
+      # as in the build job (coverlet writes absolute paths).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: coverage
+          path: coverage
+      - name: Publish coverage to Qlty
+        uses: qltysh/qlty-action/coverage@ebcd284bf32e36a030afe15f1e136c7be08b9506 # v2.5.0
+        with:
+          oidc: true
+          files: coverage/**/coverage.info
