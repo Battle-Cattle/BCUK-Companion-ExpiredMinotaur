@@ -77,6 +77,17 @@ public sealed class WizClientTests
     }
 
     [Fact]
+    public async Task SetPilotAsync_SendsWhileTheTokenIsNotCancelled()
+    {
+        using var device = new FakeWizDevice((_, _) => Success);
+        using var cts = new CancellationTokenSource();
+
+        Assert.True(await device.CreateClient().SetPilotAsync(device.IpAddress, new { state = true }, TimeSpan.FromSeconds(15), cts.Token));
+        Assert.NotEmpty(device.Requests);
+        Assert.All(device.Requests, r => Assert.Contains("setPilot", r));
+    }
+
+    [Fact]
     public async Task SetPilotAsync_IgnoresADatagramFromAnotherHost()
     {
         // The stray reply comes from 127.0.0.2, another loopback address, before the device's own.

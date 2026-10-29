@@ -66,19 +66,37 @@ public sealed class ProgramTests
             Mappings = [new EventActionMapping("Lights", [new WizTurnOnAction { DeviceId = device.Id }])],
         });
         EventDispatchResult? result = null;
+        EventDispatchResult? afterSave = null;
+        var requestsBeforeSave = 0;
 
         WpfTest.Run(async () =>
         {
             var options = Program.CreateOptions(temp.Store, fake.CreateClient(), treadmill.Client);
             Assert.NotNull(options.CreateEventActionDispatcher);
             result = await options.CreateEventActionDispatcher().DispatchAsync("Lights");
+            requestsBeforeSave = fake.Requests.Count;
+
+            // Each dispatcher loads the mappings saved by then, not the ones there when the options were built.
+            temp.Store.Save(new ActionsConfig
+            {
+                Devices = [device],
+                Mappings = [new EventActionMapping("Lights", [new WizTurnOffAction { DeviceId = device.Id }])],
+            });
+            afterSave = await options.CreateEventActionDispatcher().DispatchAsync("Lights");
         });
 
         Assert.NotNull(result);
         Assert.True(result.AllSucceeded);
+        Assert.NotNull(afterSave);
+        Assert.True(afterSave.AllSucceeded);
         // WizClient resends until a reply arrives, so a slow first reply can mean more than one request.
-        Assert.All(fake.Requests, r => Assert.Equal("""{"method":"setPilot","params":{"state":true}}""", r));
-        Assert.NotEmpty(fake.Requests);
+        var requests = fake.Requests.ToList();
+        Assert.NotEmpty(requests.Take(requestsBeforeSave));
+        Assert.All(requests.Take(requestsBeforeSave), r => Assert.Equal("""{"method":"setPilot","params":{"state":true}}""", r));
+        // A late resend of the first command can still arrive after the count, so check only that the
+        // second dispatch sent the changed action, and that it was the last thing sent.
+        Assert.Equal("""{"method":"setPilot","params":{"state":false}}""", requests[^1]);
+        Assert.Contains("""{"method":"setPilot","params":{"state":false}}""", requests.Skip(requestsBeforeSave));
         treadmill.Client.Dispose();
     }
 
@@ -103,6 +121,12 @@ public sealed class ProgramTests
             item.OnClick(); // activates the open window rather than opening another
             Assert.Same(opened, Assert.Single(OpenActionsWindows()));
             opened.Close();
+
+            item.OnClick(); // a closed window is replaced by a new one
+            var reopened = Assert.Single(OpenActionsWindows());
+            Assert.NotSame(opened, reopened);
+            Assert.True(reopened.IsVisible);
+            reopened.Close();
         });
         treadmill.Client.Dispose();
     }
