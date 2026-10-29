@@ -21,7 +21,9 @@ public sealed class WizActionExecutionTests
         var (context, device) = ContextFor(fake);
 
         Assert.True(await new WizTurnOnAction { DeviceId = device.Id }.ExecuteAsync(context, CancellationToken.None));
-        Assert.Equal("""{"method":"setPilot","params":{"state":true}}""", Assert.Single(fake.Requests));
+        // WizClient resends until a reply arrives, so a slow first reply can mean more than one request.
+        Assert.NotEmpty(fake.Requests);
+        Assert.All(fake.Requests, r => Assert.Equal("""{"method":"setPilot","params":{"state":true}}""", r));
     }
 
     [Theory]
@@ -48,7 +50,7 @@ public sealed class WizActionExecutionTests
         var (context, device) = ContextFor(fake);
 
         Assert.False(await new WizToggleAction { DeviceId = device.Id }.ExecuteAsync(context, CancellationToken.None));
-        Assert.Single(fake.Requests);
+        Assert.All(fake.Requests, r => Assert.Contains("getPilot", r));
     }
 
     [Fact]

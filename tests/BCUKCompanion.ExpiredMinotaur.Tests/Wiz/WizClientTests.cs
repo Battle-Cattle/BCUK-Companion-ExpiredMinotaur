@@ -17,7 +17,8 @@ public sealed class WizClientTests
     {
         using var device = new FakeWizDevice((_, _) => Success);
 
-        var ok = await device.CreateClient().SetPilotAsync(device.IpAddress, new { state = true });
+        // A long timeout gives each attempt time for the reply, so a slow runner doesn't resend.
+        var ok = await device.CreateClient().SetPilotAsync(device.IpAddress, new { state = true }, TimeSpan.FromSeconds(15));
 
         Assert.True(ok);
         Assert.Equal("""{"method":"setPilot","params":{"state":true}}""", Assert.Single(device.Requests));
@@ -94,7 +95,7 @@ public sealed class WizClientTests
     {
         using var device = new FakeWizDevice((_, _) => """{"result":{"state":true,"dimming":40}}""");
 
-        var status = await device.CreateClient().GetPilotAsync(device.IpAddress);
+        var status = await device.CreateClient().GetPilotAsync(device.IpAddress, TimeSpan.FromSeconds(15));
 
         Assert.Equal(new WizPilotStatus(true, 40, null, null, null, null), status);
         Assert.Equal("""{"method":"getPilot","params":{}}""", Assert.Single(device.Requests));

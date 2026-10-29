@@ -71,7 +71,9 @@ public sealed class ProgramTests
         });
 
         Assert.True(result!.AllSucceeded);
-        Assert.Single(fake.Requests);
+        // WizClient resends until a reply arrives, so a slow first reply can mean more than one request.
+        Assert.All(fake.Requests, r => Assert.Equal("""{"method":"setPilot","params":{"state":true}}""", r));
+        Assert.NotEmpty(fake.Requests);
         treadmill.Client.Dispose();
     }
 
