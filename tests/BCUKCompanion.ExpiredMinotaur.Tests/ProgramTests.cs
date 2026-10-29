@@ -44,8 +44,10 @@ public sealed class ProgramTests
             var options = Program.CreateOptions(temp.Store, new WizClient(), treadmill.Client);
 
             Assert.Equal(Program.DataFolderName, options.DataFolderName);
-            Assert.Equal(("Battle-Cattle", "BCUK-Companion-ExpiredMinotaur"), (options.Updates!.RepoOwner, options.Updates.RepoName));
-            Assert.Equal("Actions...", Assert.Single(options.AdditionalMenuItems!).Text);
+            Assert.NotNull(options.Updates);
+            Assert.Equal(("Battle-Cattle", "BCUK-Companion-ExpiredMinotaur"), (options.Updates.RepoOwner, options.Updates.RepoName));
+            Assert.NotNull(options.AdditionalMenuItems);
+            Assert.Equal("Actions...", Assert.Single(options.AdditionalMenuItems).Text);
         });
         treadmill.Client.Dispose();
     }
@@ -68,10 +70,12 @@ public sealed class ProgramTests
         WpfTest.Run(async () =>
         {
             var options = Program.CreateOptions(temp.Store, fake.CreateClient(), treadmill.Client);
-            result = await options.CreateEventActionDispatcher!().DispatchAsync("Lights");
+            Assert.NotNull(options.CreateEventActionDispatcher);
+            result = await options.CreateEventActionDispatcher().DispatchAsync("Lights");
         });
 
-        Assert.True(result!.AllSucceeded);
+        Assert.NotNull(result);
+        Assert.True(result.AllSucceeded);
         // WizClient resends until a reply arrives, so a slow first reply can mean more than one request.
         Assert.All(fake.Requests, r => Assert.Equal("""{"method":"setPilot","params":{"state":true}}""", r));
         Assert.NotEmpty(fake.Requests);
@@ -87,9 +91,11 @@ public sealed class ProgramTests
         WpfTest.Run(() =>
         {
             var options = Program.CreateOptions(temp.Store, new WizClient(), treadmill.Client);
-            options.OnClientReady!(new CompanionClient(new Uri("https://bot.example"), new MemoryTokenStore()));
+            Assert.NotNull(options.OnClientReady);
+            options.OnClientReady(new CompanionClient(new Uri("https://bot.example"), new MemoryTokenStore()));
 
-            var item = Assert.Single(options.AdditionalMenuItems!);
+            Assert.NotNull(options.AdditionalMenuItems);
+            var item = Assert.Single(options.AdditionalMenuItems);
             item.OnClick();
             item.OnClick(); // activates the open window rather than opening another
         });
@@ -114,7 +120,8 @@ public sealed class ProgramTests
                 Program.RunTrayApp = previous;
             }
 
-            Assert.Equal(Program.DataFolderName, ran!.DataFolderName);
+            Assert.NotNull(ran);
+            Assert.Equal(Program.DataFolderName, ran.DataFolderName);
         });
     }
 

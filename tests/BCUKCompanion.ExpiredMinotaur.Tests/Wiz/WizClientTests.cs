@@ -69,9 +69,11 @@ public sealed class WizClientTests
         using var device = new FakeWizDevice((_, _) => null);
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
 
+        var watch = System.Diagnostics.Stopwatch.StartNew();
         var ok = await device.CreateClient().SetPilotAsync(device.IpAddress, new { state = true }, TimeSpan.FromSeconds(30), cts.Token);
 
         Assert.False(ok);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"Took {watch.Elapsed} to stop; the timeout was 30s.");
     }
 
     [Fact]
@@ -143,6 +145,7 @@ public sealed class WizClientTests
         using var device = new FakeWizDevice((_, _) => null);
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
 
+        var watch = System.Diagnostics.Stopwatch.StartNew();
         var found = new List<WizDiscoveredDevice>();
         await foreach (var d in device.CreateClient().DiscoverAsync(TimeSpan.FromSeconds(30), cts.Token))
         {
@@ -150,6 +153,7 @@ public sealed class WizClientTests
         }
 
         Assert.Empty(found);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"Took {watch.Elapsed} to stop; the window was 30s.");
     }
 
     [Fact]

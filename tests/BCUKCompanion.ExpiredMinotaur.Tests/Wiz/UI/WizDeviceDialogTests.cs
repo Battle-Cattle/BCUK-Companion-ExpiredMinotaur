@@ -28,7 +28,7 @@ public sealed class WizDeviceDialogTests
             });
 
             Assert.True(result);
-            var device = dialog.Result!;
+            var device = Assert.IsType<WizDevice>(dialog.Result);
             Assert.Equal(("Hall", "192.168.1.30", WizDeviceType.Light), (device.Name, device.IpAddress, device.DeviceType));
             Assert.Equal((true, false, true), (device.SupportsColor, device.SupportsColorTemperature, device.SupportsDimming));
         });
@@ -92,7 +92,7 @@ public sealed class WizDeviceDialogTests
                 var list = WpfTest.All<ListBox>(window).Single();
                 await WpfTest.WaitUntil(() => list.Items.Count > 0 && WpfTest.Texts(window).Any(t => t.StartsWith("Found")));
                 statuses.AddRange(WpfTest.Texts(window));
-                Assert.Equal("ESP10_SOCKET_06 - 127.0.0.1 (inferred: Plug)", list.Items[0]!.ToString());
+                Assert.Equal("ESP10_SOCKET_06 - 127.0.0.1 (inferred: Plug)", list.Items[0]?.ToString());
 
                 WpfTest.Click(window, "Add Selected");
                 Assert.Contains("Select at least one device first.", WpfTest.Texts(window));

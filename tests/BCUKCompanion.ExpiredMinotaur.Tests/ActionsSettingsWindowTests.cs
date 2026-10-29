@@ -15,8 +15,14 @@ public sealed class ActionsSettingsWindowTests
 {
     private static readonly WizDevice Desk = new(Guid.NewGuid(), "Desk", "192.168.1.20", WizDeviceType.Light, true, true, true);
 
-    private static object? CallProtected(ActionsSettingsWindow window, string name) =>
-        typeof(ActionsSettingsWindow).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
+    // Takes the window as an object, so this class's own signatures name no WPF type (see WindowsOnly).
+    private static object? CallProtected(object window, string name)
+    {
+        var type = window.GetType();
+        var method = type.GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new MissingMethodException(type.Name, name);
+        return method.Invoke(window, null);
+    }
 
     [SkippableFact]
     public void ShowsTheTreadmillPanelAndBothTabs()
@@ -40,7 +46,11 @@ public sealed class ActionsSettingsWindowTests
     {
         WindowsOnly.Skip();
         using var temp = new TempActionsStore();
-        temp.Store.Save(new ActionsConfig { Devices = [Desk] });
+        temp.Store.Save(new ActionsConfig
+        {
+            Devices = [Desk],
+            Mappings = [new EventActionMapping("Hydrate", [new WizTurnOnAction { DeviceId = Desk.Id }])],
+        });
         var treadmill = new FakeTreadmill();
         WpfTest.Run(async () =>
         {
@@ -55,7 +65,10 @@ public sealed class ActionsSettingsWindowTests
 
         var saved = temp.Store.Load();
         Assert.Equal([Desk], saved.Devices);
-        Assert.Equal("Lights", Assert.Single(saved.Mappings).RewardTitle);
+        Assert.Equal(["Hydrate", "Lights"], saved.Mappings.Select(m => m.RewardTitle));
+        var action = Assert.IsType<WizTurnOnAction>(Assert.Single(saved.Mappings[0].Actions));
+        Assert.Equal(Desk.Id, action.DeviceId);
+        Assert.Empty(saved.Mappings[1].Actions);
         treadmill.Client.Dispose();
     }
 
@@ -87,12 +100,13 @@ public sealed class ActionsSettingsWindowTests
         {
             var window = new ActionsSettingsWindow(temp.Store, new WizClient(), treadmill.Client);
 
-            var editors = ((IEnumerable<BCUKCompanion.TrayApp.Actions.EventActionEditor>)CallProtected(window, "CreateActionEditors")!).ToList();
+            var editors = Assert.IsAssignableFrom<IEnumerable<BCUKCompanion.TrayApp.Actions.EventActionEditor>>(
+                CallProtected(window, "CreateActionEditors")).ToList();
             Assert.Collection(editors, e => Assert.IsType<WizActionEditor>(e), e => Assert.IsType<TreadmillActionEditor>(e));
 
-            var context = (IEventActionContext)CallProtected(window, "BuildContext")!;
-            Assert.Equal(Desk, context.GetService<WizActionContext>()!.ResolveDevice(Desk.Id));
-            Assert.Same(treadmill.Client, context.GetService<TreadmillActionContext>()!.Client);
+            var context = Assert.IsAssignableFrom<IEventActionContext>(CallProtected(window, "BuildContext"));
+            Assert.Equal(Desk, Assert.IsType<WizActionContext>(context.GetService<WizActionContext>()).ResolveDevice(Desk.Id));
+            Assert.Same(treadmill.Client, Assert.IsType<TreadmillActionContext>(context.GetService<TreadmillActionContext>()).Client);
             Assert.Equal("Desk: TurnOn", new WizTurnOnAction { DeviceId = Desk.Id }.Describe(context));
         });
         treadmill.Client.Dispose();

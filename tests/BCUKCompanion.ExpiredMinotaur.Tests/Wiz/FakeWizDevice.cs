@@ -30,7 +30,7 @@ internal sealed class FakeWizDevice : IDisposable
 
     public ConcurrentQueue<string> Requests { get; } = new();
 
-    public int Port => ((IPEndPoint)socket.Client.LocalEndPoint!).Port;
+    public int Port => (socket.Client.LocalEndPoint as IPEndPoint ?? throw new InvalidOperationException("The socket isn't bound.")).Port;
 
     public string IpAddress => IPAddress.Loopback.ToString();
 

@@ -66,8 +66,11 @@ public sealed class FtmsDeviceTests
 
         public void Drop() => Disconnected?.Invoke(this, EventArgs.Empty);
 
-        public Task<IGattCharacteristicPort?> GetCharacteristicAsync(Guid characteristicUuid) =>
-            Task.FromResult<IGattCharacteristicPort?>(Characteristics.GetValueOrDefault(characteristicUuid));
+        public Exception? LookupThrows { get; set; }
+
+        public Task<IGattCharacteristicPort?> GetCharacteristicAsync(Guid characteristicUuid) => LookupThrows is { } failure
+            ? Task.FromException<IGattCharacteristicPort?>(failure)
+            : Task.FromResult<IGattCharacteristicPort?>(Characteristics.GetValueOrDefault(characteristicUuid));
 
         public void Dispose() => Disposed = true;
     }
@@ -136,6 +139,18 @@ public sealed class FtmsDeviceTests
         Assert.False(await device.ConnectAsync(42));
 
         Assert.Equal(["Connect failed: radio off"], device.LastConnectWarnings);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_ThatFailsAfterTheLinkOpened_ReleasesTheLink()
+    {
+        connector.Link.LookupThrows = new InvalidOperationException("GATT unreachable");
+
+        Assert.False(await device.ConnectAsync(42));
+
+        Assert.Equal(["Connect failed: GATT unreachable"], device.LastConnectWarnings);
+        Assert.True(connector.Link.Disposed);
+        Assert.False(device.IsConnected);
     }
 
     [Fact]

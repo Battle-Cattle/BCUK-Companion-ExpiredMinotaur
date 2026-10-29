@@ -8,8 +8,8 @@ internal sealed class TempActionsStore : IDisposable
 
     public void Dispose()
     {
-        var directory = Path.GetDirectoryName(Store.ConfigFilePath)!;
-        if (Directory.Exists(directory))
+        var directory = Path.GetDirectoryName(Store.ConfigFilePath);
+        if (directory is not null && Directory.Exists(directory))
         {
             Directory.Delete(directory, recursive: true);
         }

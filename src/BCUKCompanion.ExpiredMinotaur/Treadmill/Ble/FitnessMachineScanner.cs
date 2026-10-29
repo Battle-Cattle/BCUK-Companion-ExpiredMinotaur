@@ -68,8 +68,20 @@ public sealed class FitnessMachineScanner
         watcher.Start();
 
         var cancellationRegistration = cancellationToken.Register(() => Finish(null));
-        _ = Task.Delay(timeout, timeProvider).ContinueWith(_ => Finish(null), TaskScheduler.Default);
-        _ = tcs.Task.ContinueWith(_ => cancellationRegistration.Dispose(), TaskScheduler.Default);
+
+        // Cancelled once the scan ends, so a scan that finds the treadmill early doesn't leave
+        // its timeout timer running for the rest of the window.
+        var timeoutCts = new CancellationTokenSource();
+        _ = Task.Delay(timeout, timeProvider, timeoutCts.Token)
+            .ContinueWith(_ => Finish(null), CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
+        _ = tcs.Task.ContinueWith(
+            _ =>
+            {
+                cancellationRegistration.Dispose();
+                timeoutCts.Cancel();
+                timeoutCts.Dispose();
+            },
+            TaskScheduler.Default);
 
         return tcs.Task;
     }

@@ -41,7 +41,8 @@ public sealed class WizActionEditorTests
         var built = editor.TryBuild(out var error);
 
         Assert.Null(error);
-        Assert.Equal(System.Text.Json.JsonSerializer.Serialize<object>(action), System.Text.Json.JsonSerializer.Serialize<object>(built!));
+        Assert.NotNull(built);
+        Assert.Equal(System.Text.Json.JsonSerializer.Serialize<object>(action), System.Text.Json.JsonSerializer.Serialize<object>(built));
     }
 
     [SkippableFact]
@@ -88,7 +89,7 @@ public sealed class WizActionEditorTests
             deviceCombo.SelectedItem = Plug;
 
             Assert.Equal(["TurnOn", "TurnOff", "Toggle"], kindCombo.Items.Cast<object>().Select(o => o.ToString()));
-            Assert.Equal("TurnOff", kindCombo.SelectedItem!.ToString());
+            Assert.Equal("TurnOff", kindCombo.SelectedItem?.ToString());
         });
     }
 

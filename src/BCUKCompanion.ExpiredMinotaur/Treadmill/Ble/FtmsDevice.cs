@@ -163,6 +163,9 @@ public class FtmsDevice : ITreadmillDevice
         }
         catch (Exception ex)
         {
+            // A failure after the link opened (a characteristic lookup or subscription) would
+            // otherwise leave the device connected while reporting the attempt as failed.
+            ReleaseCurrentDevice();
             warnings.Add($"Connect failed: {ex.Message}");
             return false;
         }

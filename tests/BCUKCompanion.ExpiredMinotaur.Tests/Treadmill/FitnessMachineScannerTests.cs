@@ -30,6 +30,61 @@ public sealed class FitnessMachineScannerTests
     }
 
     [Fact]
+    public async Task AScanThatFindsTheTreadmill_StopsItsTimeoutTimer()
+    {
+        var timers = new CountingTimeProvider(time);
+        watcher.OnStart.Add(new BleAdvertisement(2, [FtmsConstants.FitnessMachineService]));
+
+        Assert.Equal(2UL, await new FitnessMachineScanner(() => watcher, timers).FindFitnessMachineAddressAsync(TimeSpan.FromSeconds(10)));
+
+        // The clean-up runs as a continuation, so give it a moment.
+        for (var i = 0; i < 100 && timers.Live > 0; i++)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.Equal(0, timers.Live);
+    }
+
+    /// <summary>Counts the timers created through it that haven't been disposed yet.</summary>
+    private sealed class CountingTimeProvider(TimeProvider inner) : TimeProvider
+    {
+        private int live;
+
+        public int Live => Volatile.Read(ref live);
+
+        public override DateTimeOffset GetUtcNow() => inner.GetUtcNow();
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            Interlocked.Increment(ref live);
+            return new CountedTimer(inner.CreateTimer(callback, state, dueTime, period), () => Interlocked.Decrement(ref live));
+        }
+
+        private sealed class CountedTimer(ITimer timer, Action disposed) : ITimer
+        {
+            private int isDisposed;
+
+            public bool Change(TimeSpan dueTime, TimeSpan period) => timer.Change(dueTime, period);
+
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref isDisposed, 1) == 0)
+                {
+                    timer.Dispose();
+                    disposed();
+                }
+            }
+
+            public ValueTask DisposeAsync()
+            {
+                Dispose();
+                return ValueTask.CompletedTask;
+            }
+        }
+    }
+
+    [Fact]
     public async Task ReturnsNullOnceTheTimeoutPasses()
     {
         var scan = scanner.FindFitnessMachineAddressAsync(TimeSpan.FromSeconds(10));

@@ -50,6 +50,7 @@ public sealed class WizActionExecutionTests
         var (context, device) = ContextFor(fake);
 
         Assert.False(await new WizToggleAction { DeviceId = device.Id }.ExecuteAsync(context, CancellationToken.None));
+        Assert.NotEmpty(fake.Requests);
         Assert.All(fake.Requests, r => Assert.Contains("getPilot", r));
     }
 
