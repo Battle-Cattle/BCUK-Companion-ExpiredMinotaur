@@ -35,7 +35,10 @@ public sealed class TreadmillClient : IDisposable
     // caller queues on writeLock — each method re-checks after acquiring it, so a queued
     // caller that loses the race still safely no-ops instead of using torn-down state.
     private readonly SemaphoreSlim writeLock = new(1, 1);
-    private readonly System.Threading.Timer followTimer;
+    private readonly ITimer followTimer;
+    private readonly FitnessMachineScanner scanner;
+    private readonly Func<ITreadmillDevice> createDevice;
+    private readonly TimeProvider timeProvider;
 
     // Interlocked-guarded: 0 = live, 1 = disposed. Set before Dispose() attempts to acquire
     // writeLock, and checked by every other method right after it acquires the lock, so a
@@ -45,7 +48,7 @@ public sealed class TreadmillClient : IDisposable
 
     // Not readonly: DisconnectAsync() swaps in a fresh instance so a later Connect can
     // scan/re-pair rather than reusing a torn-down device, matching the test app's Disconnect button.
-    private FtmsDevice device = new();
+    private ITreadmillDevice device;
     private ControlPointService? controlPointService;
     private TaskCompletionSource<double>? firstSpeedReading;
 
@@ -85,14 +88,27 @@ public sealed class TreadmillClient : IDisposable
 
     /// <summary>Creates a disconnected client; call <see cref="ConnectAsync"/> to find and connect to the treadmill.</summary>
     public TreadmillClient()
+        : this(new FitnessMachineScanner(), () => new FtmsDevice(), TimeProvider.System)
     {
-        followTimer = new System.Threading.Timer(_ => _ = FollowBeltSpeedAsync(), null, Timeout.Infinite, Timeout.Infinite);
+    }
+
+    /// <summary>Creates a disconnected client over other parts, so tests can stand in for the treadmill and the clock.</summary>
+    /// <param name="scanner">Finds the treadmill's address on <see cref="ConnectAsync"/>.</param>
+    /// <param name="createDevice">Creates a fresh, unconnected device; called now and after every disconnect.</param>
+    /// <param name="timeProvider">The clock for speed readings, the first-reading wait and the follow timer.</param>
+    internal TreadmillClient(FitnessMachineScanner scanner, Func<ITreadmillDevice> createDevice, TimeProvider timeProvider)
+    {
+        this.scanner = scanner;
+        this.createDevice = createDevice;
+        this.timeProvider = timeProvider;
+        followTimer = timeProvider.CreateTimer(_ => _ = FollowBeltSpeedAsync(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        device = createDevice();
         AttachDeviceEvents(device);
     }
 
     /// <summary>Subscribes to a device's disconnect and speed-reading events.</summary>
     /// <param name="attachedDevice">The device (current or freshly swapped in) whose events to handle.</param>
-    private void AttachDeviceEvents(FtmsDevice attachedDevice)
+    private void AttachDeviceEvents(ITreadmillDevice attachedDevice)
     {
         // Without this the client kept reporting itself connected after the treadmill was powered
         // off or went out of range: every nudge failed until the user clicked Disconnect then Connect.
@@ -106,7 +122,7 @@ public sealed class TreadmillClient : IDisposable
                 if (snapshot.InstantaneousSpeedKmh is { } speed)
                 {
                     CurrentSpeedKmh = speed;
-                    Volatile.Write(ref lastSpeedReading, new BeltReading(speed, DateTime.UtcNow));
+                    Volatile.Write(ref lastSpeedReading, new BeltReading(speed, timeProvider.GetUtcNow().UtcDateTime));
                     firstSpeedReading?.TrySetResult(speed);
                 }
             }
@@ -193,13 +209,13 @@ public sealed class TreadmillClient : IDisposable
                 // device.ConnectAsync had already established a live BLE connection — without
                 // this, that connection, its GATT subscriptions, and controlPointService would
                 // all be left dangling while this class reports itself disconnected. Swap in a
-                // fresh FtmsDevice (same pattern DisconnectAsync uses) rather than calling
+                // fresh device (same pattern DisconnectAsync uses) rather than calling
                 // device.Dispose() in place, since a disposed FtmsDevice can't reconnect and
                 // has its events torn down (see FtmsDevice.Dispose).
                 controlPointService = null;
                 firstSpeedReading = null;
                 device.Dispose();
-                device = new FtmsDevice();
+                device = createDevice();
                 AttachDeviceEvents(device);
             }
             writeLock.Release();
@@ -218,7 +234,7 @@ public sealed class TreadmillClient : IDisposable
     private async Task<bool> ScanConnectAndConfigureAsync(CancellationToken cancellationToken)
     {
         RaiseStatus("Scanning...");
-        var address = await FtmsDevice.FindFitnessMachineAddressAsync(ScanTimeout, cancellationToken).ConfigureAwait(false);
+        var address = await scanner.FindFitnessMachineAddressAsync(ScanTimeout, cancellationToken).ConfigureAwait(false);
         if (cancellationToken.IsCancellationRequested)
         {
             RaiseStatus("Connect cancelled.");
@@ -289,7 +305,7 @@ public sealed class TreadmillClient : IDisposable
         // belt down towards the minimum. Seed TargetSpeedKmh from the belt's actual current
         // speed instead, waiting briefly for the first notification.
         var readingTask = firstSpeedReading.Task;
-        var completed = await Task.WhenAny(readingTask, Task.Delay(FirstReadingTimeout, cancellationToken)).ConfigureAwait(false);
+        var completed = await Task.WhenAny(readingTask, Task.Delay(FirstReadingTimeout, timeProvider, cancellationToken)).ConfigureAwait(false);
 
         // Task.Delay(..., cancellationToken) transitions to Canceled (not Faulted) when the
         // token fires, which still makes WhenAny complete — so without this check, a cancelled
@@ -344,7 +360,7 @@ public sealed class TreadmillClient : IDisposable
     /// <param name="onlyDevice">The device whose connection was lost, or null to disconnect whatever is current.</param>
     /// <param name="status">The status line to raise once torn down.</param>
     /// <returns>A task that completes once the teardown has finished or been skipped.</returns>
-    private async Task DisconnectAsync(FtmsDevice? onlyDevice, string status)
+    private async Task DisconnectAsync(ITreadmillDevice? onlyDevice, string status)
     {
         // Wait for any write already in flight (a Nudge) — or a ConnectAsync
         // still mid-flight, which now holds this same lock for its entire body — to release
@@ -364,7 +380,7 @@ public sealed class TreadmillClient : IDisposable
             // in flight when DisconnectAsync was called can start the timer (at the tail of
             // its own locked body) *after* an earlier, unlocked Change(Infinite) call here
             // would have run, leaving follow ticks running against a torn-down connection.
-            followTimer.Change(Timeout.Infinite, Timeout.Infinite);
+            followTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
             controlPointService = null;
             IsConnected = false;
@@ -372,7 +388,7 @@ public sealed class TreadmillClient : IDisposable
             Volatile.Write(ref lastSpeedReading, null);
 
             device.Dispose();
-            device = new FtmsDevice();
+            device = createDevice();
             AttachDeviceEvents(device);
         }
         finally
@@ -426,7 +442,7 @@ public sealed class TreadmillClient : IDisposable
                 return false;
             }
 
-            var now = DateTime.UtcNow;
+            var now = timeProvider.GetUtcNow().UtcDateTime;
             // Read once, so the speed nudged from is the one that was classified.
             var belt = RecentBeltReading(now);
             var fromKmh = belt is not null && speedFollower.BeltOverridesTarget(TargetSpeedKmh, belt.Kmh, MinSpeedKmh, SpeedStepKmh, now)
@@ -437,7 +453,7 @@ public sealed class TreadmillClient : IDisposable
             if (result.Accepted)
             {
                 TargetSpeedKmh = snapped;
-                speedFollower.OnOwnTargetSet(DateTime.UtcNow);
+                speedFollower.OnOwnTargetSet(timeProvider.GetUtcNow().UtcDateTime);
             }
             else
             {
@@ -497,7 +513,7 @@ public sealed class TreadmillClient : IDisposable
                 return;
             }
 
-            var now = DateTime.UtcNow;
+            var now = timeProvider.GetUtcNow().UtcDateTime;
             // Read once, so the speed adopted is the one Decide classified.
             var belt = RecentBeltReading(now);
             if (speedFollower.Decide(TargetSpeedKmh, belt, MinSpeedKmh, SpeedStepKmh, now) == FollowAction.AdoptBeltSpeed
@@ -521,7 +537,7 @@ public sealed class TreadmillClient : IDisposable
     /// <see cref="ControlPointService.SetTargetSpeedAsync"/> can take up to 2s — longer than
     /// Dispose()'s wait), finish that deferred cleanup here, right before releasing the lock,
     /// rather than leaking <see cref="device"/>/<see cref="followTimer"/> until process
-    /// exit. Safe to call even when nothing is pending: <see cref="System.Threading.Timer.Dispose()"/>
+    /// exit. Safe to call even when nothing is pending: <see cref="IDisposable.Dispose"/> on the timer
     /// and <see cref="FtmsDevice.Dispose"/> are both idempotent.
     /// </summary>
     private void FinishDeferredDisposalIfPending()

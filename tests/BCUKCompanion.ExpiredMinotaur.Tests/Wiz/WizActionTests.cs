@@ -206,4 +206,21 @@ public sealed class WizActionTests
         Assert.Same(Context, Context.GetService(typeof(WizActionContext)));
         Assert.Null(Context.GetService(typeof(WizClient)));
     }
+
+    [Fact]
+    public void Kind_MatchesEachActionKind()
+    {
+        Assert.Equal(WizTurnOnAction.ActionKind, new WizTurnOnAction().Kind);
+        Assert.Equal(WizTurnOffAction.ActionKind, new WizTurnOffAction().Kind);
+        Assert.Equal(WizToggleAction.ActionKind, new WizToggleAction().Kind);
+        Assert.Equal(WizSetBrightnessAction.ActionKind, new WizSetBrightnessAction().Kind);
+        Assert.Equal(WizSetColorAction.ActionKind, new WizSetColorAction().Kind);
+        Assert.Equal(WizSetColorTemperatureAction.ActionKind, new WizSetColorTemperatureAction().Kind);
+    }
+
+    [Fact]
+    public void WizDevice_ToString_ShowsNameAddressAndType()
+    {
+        Assert.Equal("Fan (192.168.1.22) - Plug", Plug.ToString());
+    }
 }

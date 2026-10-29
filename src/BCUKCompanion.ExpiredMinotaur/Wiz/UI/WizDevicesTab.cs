@@ -32,6 +32,9 @@ public sealed class WizDevicesTab : DockPanel
 
     private readonly ListBox devicesList = new() { Margin = new Thickness(0, 0, 0, 8), MinHeight = 200 };
 
+    /// <summary>Shows a dialog modally and returns its result; tests replace it to drive the dialog.</summary>
+    internal Func<Window, bool?> ShowDialogWindow { get; set; } = window => window.ShowDialog();
+
     /// <summary>Builds the tab over <paramref name="devices"/>, which it edits in place.</summary>
     /// <param name="devices">The window's device list; the tab adds, replaces and removes entries in it.</param>
     /// <param name="wizClient">Used by LAN discovery.</param>
@@ -79,7 +82,7 @@ public sealed class WizDevicesTab : DockPanel
     private void OnAddDevice()
     {
         var dialog = new WizDeviceEditDialog { Owner = Window.GetWindow(this) };
-        if (dialog.ShowDialog() != true || dialog.Result is not { } device)
+        if (ShowDialogWindow(dialog) != true || dialog.Result is not { } device)
         {
             return;
         }
@@ -106,7 +109,7 @@ public sealed class WizDevicesTab : DockPanel
         }
 
         var dialog = new WizDeviceEditDialog(selected) { Owner = Window.GetWindow(this) };
-        if (dialog.ShowDialog() != true || dialog.Result is not { } updated)
+        if (ShowDialogWindow(dialog) != true || dialog.Result is not { } updated)
         {
             return;
         }
@@ -147,7 +150,7 @@ public sealed class WizDevicesTab : DockPanel
     private void OnDiscoverDevices()
     {
         var dialog = new WizDiscoverDevicesDialog(wizClient, devices.Select(d => d.IpAddress).ToList()) { Owner = Window.GetWindow(this) };
-        if (dialog.ShowDialog() != true)
+        if (ShowDialogWindow(dialog) != true)
         {
             return;
         }
