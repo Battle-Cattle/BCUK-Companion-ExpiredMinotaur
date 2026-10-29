@@ -17,6 +17,9 @@ internal sealed class FakeTreadmillDevice : ITreadmillDevice
     /// <summary>A belt speed to report while the range is read, i.e. once the client is waiting for one.</summary>
     public double? SpeedWhileReadingRange { get; set; }
 
+    /// <summary>A belt speed to report while connecting, i.e. as soon as notifications are subscribed.</summary>
+    public double? SpeedWhileConnecting { get; set; }
+
     public byte RequestControlResult { get; set; } = FtmsConstants.ResultSuccess;
 
     public List<string> Warnings { get; } = [];
@@ -53,6 +56,11 @@ internal sealed class FakeTreadmillDevice : ITreadmillDevice
         }
 
         IsConnected = ConnectSucceeds;
+        if (ConnectSucceeds && SpeedWhileConnecting is { } speed)
+        {
+            ReportSpeed(speed);
+        }
+
         return Task.FromResult(ConnectSucceeds);
     }
 
@@ -121,6 +129,10 @@ internal sealed class FakeAdvertisementWatcher : IAdvertisementWatcher
 
     public bool Stopped { get; private set; }
 
+    public Exception? StopThrows { get; set; }
+
+    public bool HasListeners => Received is not null;
+
     public event EventHandler<BleAdvertisement>? Received;
 
     public void Send(BleAdvertisement advertisement) => Received?.Invoke(this, advertisement);
@@ -134,5 +146,12 @@ internal sealed class FakeAdvertisementWatcher : IAdvertisementWatcher
         }
     }
 
-    public void Stop() => Stopped = true;
+    public void Stop()
+    {
+        Stopped = true;
+        if (StopThrows is not null)
+        {
+            throw StopThrows;
+        }
+    }
 }

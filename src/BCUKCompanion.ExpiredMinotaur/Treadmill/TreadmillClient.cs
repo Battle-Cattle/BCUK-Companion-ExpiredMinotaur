@@ -247,18 +247,18 @@ public sealed class TreadmillClient : IDisposable
             return false;
         }
 
+        // device.ConnectAsync subscribes to Treadmill Data notifications, and the first one can
+        // arrive before it returns, so wait for it from before the connect rather than after.
+        firstSpeedReading = new TaskCompletionSource<double>();
+
         RaiseStatus("Connecting...");
         var connected = await device.ConnectAsync(address.Value).ConfigureAwait(false);
         if (!connected)
         {
+            firstSpeedReading = null;
             RaiseStatus("Connection failed.");
             return false;
         }
-
-        // Subscription for Treadmill Data notifications is wired up inside device.ConnectAsync
-        // above, so create this before anything else that awaits, in case a notification
-        // arrives while RequestControl/ReadSupportedSpeedRange are still in flight.
-        firstSpeedReading = new TaskCompletionSource<double>();
 
         controlPointService = new ControlPointService(device);
 

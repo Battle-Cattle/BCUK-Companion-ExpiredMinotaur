@@ -97,10 +97,19 @@ public sealed class ProgramTests
             Assert.NotNull(options.AdditionalMenuItems);
             var item = Assert.Single(options.AdditionalMenuItems);
             item.OnClick();
+            var opened = Assert.Single(OpenActionsWindows());
+            Assert.True(opened.IsVisible);
+
             item.OnClick(); // activates the open window rather than opening another
+            Assert.Same(opened, Assert.Single(OpenActionsWindows()));
+            opened.Close();
         });
         treadmill.Client.Dispose();
     }
+
+    private static List<ActionsSettingsWindow> OpenActionsWindows() =>
+        System.Windows.PresentationSource.CurrentSources.OfType<System.Windows.Interop.HwndSource>()
+            .Select(source => source.RootVisual).OfType<ActionsSettingsWindow>().ToList();
 
     [SkippableFact]
     public void Main_RunsTheTrayAppWithThisAppsOptions()

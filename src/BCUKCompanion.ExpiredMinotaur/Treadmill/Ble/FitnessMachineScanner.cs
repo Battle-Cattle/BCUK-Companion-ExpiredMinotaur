@@ -27,10 +27,17 @@ public sealed class FitnessMachineScanner
     /// <paramref name="cancellationToken"/> is cancelled.
     /// </summary>
     /// <param name="timeout">How long to scan before giving up.</param>
-    /// <param name="cancellationToken">Stops the scan early, completing with null.</param>
+    /// <param name="cancellationToken">Stops the scan early, completing with null; an already-cancelled token doesn't start one.</param>
     /// <returns>A task completing with the treadmill's 48-bit Bluetooth address, or null if none was found.</returns>
     public Task<ulong?> FindFitnessMachineAddressAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
+        // Otherwise the watcher would start, and could report a treadmill, before the
+        // cancellation registration below gets the chance to end the scan.
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromResult<ulong?>(null);
+        }
+
         var tcs = new TaskCompletionSource<ulong?>();
         var watcher = createWatcher();
 
@@ -48,9 +55,19 @@ public sealed class FitnessMachineScanner
         // Found, timed out or cancelled: whichever comes first stops the watcher and sets the result.
         void Finish(ulong? address)
         {
-            if (Interlocked.CompareExchange(ref completionGate, 1, 0) == 0)
+            if (Interlocked.CompareExchange(ref completionGate, 1, 0) != 0)
+            {
+                return;
+            }
+
+            // The gate is closed now, so nothing else will complete the scan: do it even if the
+            // radio fails while stopping, or the caller would wait on it forever.
+            try
             {
                 watcher.Stop();
+            }
+            finally
+            {
                 watcher.Received -= handler;
                 tcs.TrySetResult(address);
             }

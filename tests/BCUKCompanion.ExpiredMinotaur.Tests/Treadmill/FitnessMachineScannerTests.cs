@@ -109,4 +109,26 @@ public sealed class FitnessMachineScannerTests
         Assert.Null(await scan);
         Assert.True(watcher.Stopped);
     }
+
+    [Fact]
+    public async Task AnAlreadyCancelledScan_ReturnsNullWithoutStartingTheWatcher()
+    {
+        watcher.OnStart.Add(new BleAdvertisement(2, [FtmsConstants.FitnessMachineService]));
+
+        Assert.Null(await scanner.FindFitnessMachineAddressAsync(TimeSpan.FromSeconds(10), new CancellationToken(true)));
+        Assert.False(watcher.Started);
+    }
+
+    [Fact]
+    public async Task AWatcherThatThrowsWhileStopping_StillCompletesTheScan()
+    {
+        watcher.StopThrows = new InvalidOperationException("radio off");
+
+        var scan = scanner.FindFitnessMachineAddressAsync(TimeSpan.FromSeconds(10));
+        time.Advance(TimeSpan.FromSeconds(10));
+
+        Assert.Null(await scan.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.True(watcher.Stopped);
+        Assert.False(watcher.HasListeners);
+    }
 }

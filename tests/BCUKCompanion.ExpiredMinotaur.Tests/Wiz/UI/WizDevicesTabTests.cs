@@ -198,6 +198,8 @@ public sealed class WizDevicesTabTests
 
             Assert.Equal([Desk], rig.Devices);
             Assert.Equal(3, rig.Actions.Count);
+            Assert.Equal(2, rig.Actions.Count(a => a is WizDeviceActionBase d && d.DeviceId == Desk.Id));
+            Assert.DoesNotContain(rig.Actions, a => a is WizDeviceActionBase d && d.DeviceId == Fan.Id);
             Assert.Equal([WizDeviceList.RemovedMessage(1)], rig.Statuses);
         });
     }

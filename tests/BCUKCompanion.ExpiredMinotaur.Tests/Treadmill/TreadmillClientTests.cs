@@ -156,6 +156,18 @@ public sealed class TreadmillClientTests : IDisposable
     }
 
     [Fact]
+    public async Task ConnectAsync_SeedsTheTargetFromASpeedReportedWhileSubscribing()
+    {
+        Device.SpeedWhileReadingRange = null;
+        Device.SpeedWhileConnecting = 4.2;
+
+        Assert.True(await client.ConnectAsync());
+
+        Assert.Equal(4.2, client.TargetSpeedKmh, 3);
+        Assert.DoesNotContain(statuses, s => s.StartsWith("No speed reading"));
+    }
+
+    [Fact]
     public async Task ConnectAsync_ClampsAStoppedBeltToTheMinimum()
     {
         Device.SpeedWhileReadingRange = 0;

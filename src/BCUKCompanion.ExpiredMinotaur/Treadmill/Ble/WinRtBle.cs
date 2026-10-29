@@ -24,7 +24,18 @@ internal sealed class WinRtBleConnector : IBleConnector
             return (null, "FromBluetoothAddressAsync returned null.");
         }
 
-        var servicesResult = await device.GetGattServicesForUuidAsync(FtmsConstants.FitnessMachineService);
+        GattDeviceServicesResult servicesResult;
+        try
+        {
+            servicesResult = await device.GetGattServicesForUuidAsync(FtmsConstants.FitnessMachineService);
+        }
+        catch
+        {
+            // No link is returned for FtmsDevice to release, so release the device here.
+            device.Dispose();
+            throw;
+        }
+
         if (servicesResult.Status != GattCommunicationStatus.Success || servicesResult.Services.Count == 0)
         {
             device.Dispose();

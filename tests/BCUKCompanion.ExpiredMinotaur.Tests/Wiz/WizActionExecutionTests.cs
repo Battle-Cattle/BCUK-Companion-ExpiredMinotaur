@@ -36,9 +36,13 @@ public sealed class WizActionExecutionTests
         var (context, device) = ContextFor(fake);
 
         Assert.True(await new WizToggleAction { DeviceId = device.Id }.ExecuteAsync(context, CancellationToken.None));
-        Assert.Equal(
-            "{\"method\":\"setPilot\",\"params\":{\"state\":" + Json(sent) + "}}",
-            fake.Requests.Last());
+
+        // Every getPilot comes before the one setPilot (WizClient may resend either on a slow reply).
+        var setPilot = "{\"method\":\"setPilot\",\"params\":{\"state\":" + Json(sent) + "}}";
+        var requests = fake.Requests.Distinct().ToList();
+        Assert.Equal(2, requests.Count);
+        Assert.Contains("getPilot", requests[0]);
+        Assert.Equal(setPilot, requests[1]);
     }
 
     private static string Json(bool value) => value ? "true" : "false";
