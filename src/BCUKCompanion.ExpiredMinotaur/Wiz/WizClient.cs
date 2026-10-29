@@ -33,6 +33,12 @@ public sealed class WizClient
     /// <summary>The UDP port every WiZ device listens on.</summary>
     private const int WizPort = 38899;
 
+    /// <summary>The port commands and discovery requests are sent to.</summary>
+    private readonly int port;
+
+    /// <summary>Where discovery broadcasts its request.</summary>
+    private readonly IPAddress discoveryAddress;
+
     /// <summary>How long a command keeps being resent before it fails, unless the caller passes its own timeout.</summary>
     public static readonly TimeSpan DefaultCommandTimeout = TimeSpan.FromSeconds(2);
     /// <summary>How long discovery listens for replies, unless the caller passes its own window.</summary>
@@ -43,6 +49,21 @@ public sealed class WizClient
     /// "method"/"params" format the Wiz LAN protocol expects, with no naming-policy configuration needed.
     /// </summary>
     private sealed record WizRequest(string method, object @params);
+
+    /// <summary>Creates a client that talks to devices on the WiZ port and discovers them by LAN broadcast.</summary>
+    public WizClient()
+        : this(WizPort, IPAddress.Broadcast)
+    {
+    }
+
+    /// <summary>Creates a client that sends to another port and discovery address, so tests can stand in for a device.</summary>
+    /// <param name="port">The UDP port devices listen on.</param>
+    /// <param name="discoveryAddress">Where <see cref="DiscoverAsync"/> sends its request.</param>
+    internal WizClient(int port, IPAddress discoveryAddress)
+    {
+        this.port = port;
+        this.discoveryAddress = discoveryAddress;
+    }
 
     /// <summary>Sends a <c>setPilot</c> command (turn on/off, brightness, colour, …) to one device.</summary>
     /// <param name="ipAddress">The device's IP address.</param>
@@ -146,7 +167,7 @@ public sealed class WizClient
         var requestBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new WizRequest("getSystemConfig", new { })));
         try
         {
-            await udp.SendAsync(requestBytes, new IPEndPoint(IPAddress.Broadcast, WizPort), cancellationToken).ConfigureAwait(false);
+            await udp.SendAsync(requestBytes, new IPEndPoint(discoveryAddress, port), cancellationToken).ConfigureAwait(false);
         }
         catch (SocketException)
         {
@@ -227,7 +248,7 @@ public sealed class WizClient
     /// <param name="timeout">The total time to wait for a reply, split evenly across the attempts.</param>
     /// <param name="cancellationToken">Cancels the exchange, which then returns null.</param>
     /// <returns>The reply's text, or null if none arrived in time (or the address is invalid).</returns>
-    private static async Task<string?> SendAndReceiveAsync(
+    private async Task<string?> SendAndReceiveAsync(
         string ipAddress, WizRequest request, TimeSpan timeout, CancellationToken cancellationToken)
     {
         using var udp = new UdpClient();
@@ -239,7 +260,7 @@ public sealed class WizClient
             var targetAddress = IPAddress.Parse(ipAddress);
             for (var attempt = 1; attempt <= SendAttempts; attempt++)
             {
-                await udp.SendAsync(requestBytes, new IPEndPoint(targetAddress, WizPort), cancellationToken)
+                await udp.SendAsync(requestBytes, new IPEndPoint(targetAddress, port), cancellationToken)
                     .ConfigureAwait(false);
 
                 var reply = await ReceiveFromAsync(udp, targetAddress, attemptWindow, cancellationToken).ConfigureAwait(false);
