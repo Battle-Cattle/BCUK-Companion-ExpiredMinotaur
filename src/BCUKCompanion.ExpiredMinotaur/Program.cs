@@ -24,14 +24,17 @@ internal static class Program
     /// dispatching bot events — reward redemptions and advanced commands — to the mapped actions.
     /// </summary>
     [STAThread]
-    private static void Main()
+    internal static void Main()
     {
         var store = new ActionsConfigStore(DataFolderName, CreateRegistry());
         var wizClient = new WizClient();
         using var treadmillClient = new TreadmillClient();
 
-        CompanionTrayApplication.Run(CreateOptions(store, wizClient, treadmillClient));
+        RunTrayApp(CreateOptions(store, wizClient, treadmillClient));
     }
+
+    /// <summary>Runs the shared tray app until the user exits it; tests replace it to see the options without starting WPF.</summary>
+    internal static Action<CompanionTrayAppOptions> RunTrayApp { get; set; } = CompanionTrayApplication.Run;
 
     /// <summary>Registers every action kind this app's actions-config.json can hold.</summary>
     /// <returns>A registry with the WiZ and treadmill action kinds.</returns>

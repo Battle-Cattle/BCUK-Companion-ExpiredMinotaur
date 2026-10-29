@@ -6,6 +6,7 @@ using BCUKCompanion.ExpiredMinotaur.Tests.Wiz;
 using BCUKCompanion.ExpiredMinotaur.Treadmill.Actions;
 using BCUKCompanion.ExpiredMinotaur.Wiz;
 using BCUKCompanion.ExpiredMinotaur.Wiz.Actions;
+using BCUKCompanion.TrayApp;
 using Xunit;
 
 namespace BCUKCompanion.ExpiredMinotaur.Tests;
@@ -93,6 +94,28 @@ public sealed class ProgramTests
             item.OnClick(); // activates the open window rather than opening another
         });
         treadmill.Client.Dispose();
+    }
+
+    [SkippableFact]
+    public void Main_RunsTheTrayAppWithThisAppsOptions()
+    {
+        WindowsOnly.Skip();
+        WpfTest.Run(() =>
+        {
+            var previous = Program.RunTrayApp;
+            CompanionTrayAppOptions? ran = null;
+            Program.RunTrayApp = options => ran = options;
+            try
+            {
+                Program.Main();
+            }
+            finally
+            {
+                Program.RunTrayApp = previous;
+            }
+
+            Assert.Equal(Program.DataFolderName, ran!.DataFolderName);
+        });
     }
 
     private sealed class MemoryTokenStore : ITokenStore
