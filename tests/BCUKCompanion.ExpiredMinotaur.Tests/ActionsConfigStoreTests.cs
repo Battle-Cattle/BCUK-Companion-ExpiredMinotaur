@@ -31,13 +31,8 @@ public sealed class ActionsConfigStoreTests : IDisposable
         }
     }
 
-    private void WriteLegacyFile(string name, string json)
-    {
-        Directory.CreateDirectory(directory);
-        File.WriteAllText(Path.Combine(directory, name), json);
-    }
-
-    private const string LegacyWizJson = """
+    // The shapes of the per-integration files a pre-consolidation install used.
+    private const string WizJson = """
         {
           "Devices": [{ "Id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff", "Name": "Desk", "IpAddress": "192.168.1.20",
                         "DeviceType": 0, "SupportsColor": true, "SupportsColorTemperature": true, "SupportsDimming": true }],
@@ -45,7 +40,7 @@ public sealed class ActionsConfigStoreTests : IDisposable
         }
         """;
 
-    private const string LegacyTreadmillJson = """
+    private const string TreadmillJson = """
         { "Mappings": [{ "RewardTitle": "Faster", "Actions": [{ "kind": "treadmill.nudgeSpeed", "DeltaKmh": 1.0 }] }] }
         """;
 
@@ -97,70 +92,16 @@ public sealed class ActionsConfigStoreTests : IDisposable
     }
 
     [Fact]
-    public void Load_BothLegacyFiles_MergesThemAndPersistsTheResult()
+    public void Load_IgnoresLeftoverPreConsolidationFiles()
     {
-        WriteLegacyFile("wiz-config.json", LegacyWizJson);
-        WriteLegacyFile("treadmill-config.json", LegacyTreadmillJson);
-
-        var config = store.Load();
-
-        var device = Assert.Single(config.Devices);
-        Assert.Equal("Desk", device.Name);
-        Assert.Equal(["Lights on", "Faster"], config.Mappings.Select(m => m.RewardTitle));
-        Assert.IsType<WizTurnOnAction>(Assert.Single(config.Mappings[0].Actions));
-        Assert.Equal(1.0, Assert.IsType<TreadmillNudgeSpeedAction>(Assert.Single(config.Mappings[1].Actions)).DeltaKmh);
-        Assert.True(File.Exists(store.ConfigFilePath));
-        // The legacy files are kept, inert, as a fallback.
-        Assert.True(File.Exists(Path.Combine(directory, "wiz-config.json")));
-    }
-
-    [Fact]
-    public void Load_OnlyTreadmillLegacyFile_MigratesIt()
-    {
-        WriteLegacyFile("treadmill-config.json", LegacyTreadmillJson);
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "wiz-config.json"), WizJson);
+        File.WriteAllText(Path.Combine(directory, "treadmill-config.json"), TreadmillJson);
 
         var config = store.Load();
 
         Assert.Empty(config.Devices);
-        Assert.Equal("Faster", Assert.Single(config.Mappings).RewardTitle);
-        Assert.True(File.Exists(store.ConfigFilePath));
-    }
-
-    [Fact]
-    public void Load_AfterMigration_ReadsTheNewFileNotTheLegacyOnes()
-    {
-        WriteLegacyFile("treadmill-config.json", LegacyTreadmillJson);
-        store.Load();
-        WriteLegacyFile("treadmill-config.json", """{ "Mappings": [] }""");
-
-        Assert.Single(store.Load().Mappings);
-    }
-
-    [Theory]
-    [InlineData("{ not json")]
-    [InlineData("null")]
-    [InlineData("""{ "Mappings": null }""")]
-    public void Load_UnreadableLegacyFile_KeepsWhatItCanWithoutPersisting(string treadmillJson)
-    {
-        WriteLegacyFile("wiz-config.json", LegacyWizJson);
-        WriteLegacyFile("treadmill-config.json", treadmillJson);
-
-        var config = store.Load();
-
-        Assert.Single(config.Devices);
-        Assert.Equal("Lights on", Assert.Single(config.Mappings).RewardTitle);
-        // Not saved, so the next launch tries the failed file again instead of losing it.
-        Assert.False(File.Exists(store.ConfigFilePath));
-    }
-
-    [Fact]
-    public void Load_LegacyWizFileWithNullDevices_IsAFailedMigration()
-    {
-        WriteLegacyFile("wiz-config.json", """{ "Devices": null, "Mappings": [] }""");
-
-        var config = store.Load();
-
-        Assert.Empty(config.Devices);
+        Assert.Empty(config.Mappings);
         Assert.False(File.Exists(store.ConfigFilePath));
     }
 }
