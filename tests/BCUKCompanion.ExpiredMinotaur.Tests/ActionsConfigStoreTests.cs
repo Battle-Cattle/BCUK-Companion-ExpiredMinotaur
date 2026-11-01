@@ -104,4 +104,18 @@ public sealed class ActionsConfigStoreTests : IDisposable
         Assert.Empty(config.Mappings);
         Assert.False(File.Exists(store.ConfigFilePath));
     }
+
+    [Fact]
+    public void Load_ExistingConsolidatedConfig_IgnoresLeftoverLegacyFiles()
+    {
+        var device = new WizDevice(DeviceId, "Desk", "192.168.1.20", WizDeviceType.Light, true, true, true);
+        store.Save(new ActionsConfig { Devices = [device] });
+        File.WriteAllText(Path.Combine(directory, "wiz-config.json"), WizJson);
+        File.WriteAllText(Path.Combine(directory, "treadmill-config.json"), TreadmillJson);
+
+        var config = store.Load();
+
+        Assert.Equal([device], config.Devices);
+        Assert.Empty(config.Mappings);
+    }
 }
