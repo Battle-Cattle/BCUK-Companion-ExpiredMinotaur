@@ -24,8 +24,7 @@ The rest of the first-party code is this app's own integrations:
   `treadmill.nudgeSpeed`, and `TreadmillActionEditor`.
 - `ActionsSettingsWindow` / `ActionsConfigStore` — the "Actions..." tray
   window (a subclass of the Shell's `EventActionMappingsWindow`) and its
-  `actions-config.json`, including migration from the older per-integration
-  config files.
+  `actions-config.json`.
 - `tests/BCUKCompanion.ExpiredMinotaur.Tests` — xUnit tests for the
   integrations' logic. CI runs them in the Windows job.
 
