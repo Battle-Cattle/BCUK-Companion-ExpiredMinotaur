@@ -23,9 +23,16 @@ internal readonly record struct TreadmillSpeedRange(double MinKmh, double MaxKmh
     /// <returns>The range to use, and a status line saying why the default was used instead (null when the device's range is used).</returns>
     public static (TreadmillSpeedRange Range, string? Warning) FromDevice((double MinKmh, double MaxKmh, double IncrementKmh)? reported)
     {
-        if (reported is { IncrementKmh: > 0 } range)
+        if (reported is { IncrementKmh: > 0 } range && range.MinKmh <= range.MaxKmh)
         {
             return (new TreadmillSpeedRange(range.MinKmh, range.MaxKmh, range.IncrementKmh), null);
+        }
+
+        if (reported is { IncrementKmh: > 0 } invertedRange)
+        {
+            // A minimum above the maximum would make SnapAndClamp's Math.Clamp throw on every
+            // nudge (and when seeding the target on connect), so fall back to the default range.
+            return (Default, $"Supported Speed Range (0x2AD4) reported a minimum above its maximum ({invertedRange.MinKmh:0.0}-{invertedRange.MaxKmh:0.0} km/h) — using defaults {Default.MinKmh:0.0}-{Default.MaxKmh:0.0} km/h.");
         }
 
         if (reported is { } malformedRange)

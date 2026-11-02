@@ -37,6 +37,28 @@ public sealed class TreadmillSpeedRangeTests
     }
 
     [Fact]
+    public void FromDevice_FallsBackToTheDefaultWhenTheMinimumIsAboveTheMaximum()
+    {
+        var (range, warning) = TreadmillSpeedRange.FromDevice((8.0, 2.0, 0.5));
+
+        Assert.Equal(TreadmillSpeedRange.Default, range);
+        Assert.NotNull(warning);
+        Assert.Contains("minimum above its maximum (8.0-2.0 km/h)", warning);
+
+        // Without the fallback, Math.Clamp(…, 8.0, 2.0) throws ArgumentException on every nudge.
+        Assert.Equal(range.SnapAndClamp(5.0), Math.Clamp(5.0, range.MinKmh, range.MaxKmh));
+    }
+
+    [Fact]
+    public void FromDevice_AcceptsARangeWhoseMinimumEqualsItsMaximum()
+    {
+        var (range, warning) = TreadmillSpeedRange.FromDevice((4.0, 4.0, 0.5));
+
+        Assert.Equal(new TreadmillSpeedRange(4.0, 4.0, 0.5), range);
+        Assert.Null(warning);
+    }
+
+    [Fact]
     public void FromDevice_FallsBackToTheDefaultWhenTheRangeCouldNotBeRead()
     {
         var (range, warning) = TreadmillSpeedRange.FromDevice(null);
