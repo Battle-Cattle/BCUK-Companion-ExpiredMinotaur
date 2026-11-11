@@ -137,13 +137,16 @@ Qlty reports function complexity, too many returns, deep nesting, long parameter
 
 ## ALWAYS: Before committing
 
-Build, then run the tests (on Linux, see "Building and testing on Linux"):
+Build, then run only the tests for what you changed (on Linux, see "Building and testing on Linux"). CI's Windows job (`.github/workflows/dotnet.yml`) runs every test on each push, so don't repeat its full run locally:
 
 ```bash
-dotnet build && dotnet test
+dotnet build
+dotnet test --filter "FullyQualifiedName~BCUKCompanion.ExpiredMinotaur.Tests.Treadmill"   # the test namespace or class mirroring what changed
 ```
 
-The build fails on a missing doc comment as well as a compile error. Let CI's Windows job confirm the result before treating the PR as green. Bump `VERSION` when the change should ship (see the README's "Releasing").
+The build fails on a missing doc comment as well as a compile error, so always run it. **Run the full `dotnet test` instead** when the change touches something both integrations use (`ActionsConfigStore`, `ActionsSettingsWindow`, `Program.cs`, `Directory.Build.props`, the pinned Core version). The WPF tests skip on Linux, so CI's Windows job is the only real run for them.
+
+**CI is the gate, not the local run.** A PR isn't done until CI's Windows job is green. If it fails, reproduce the failing test locally where the platform allows, fix it, and show it passing before pushing again. Bump `VERSION` when the change should ship (see the README's "Releasing").
 
 ## PR Reviews (Qlty)
 
