@@ -7,6 +7,8 @@ namespace BCUKCompanion.ExpiredMinotaur;
 /// <summary>
 /// Loads and saves <c>actions-config.json</c>, dropping Wiz devices whose IP address can't be parsed.
 /// </summary>
+/// <param name="dataFolderName">Name of the per-app data folder under the user's profile that holds the config file.</param>
+/// <param name="registry">Registry of the action types the stored actions are deserialized against.</param>
 public sealed class ActionsConfigStore(string dataFolderName, EventActionTypeRegistry registry)
     : EventActionConfigStore<ActionsConfig>(dataFolderName, "actions-config.json", registry)
 {

@@ -11,6 +11,8 @@ internal enum FollowAction
 }
 
 /// <summary>A belt speed the treadmill reported, and when (UTC) it arrived.</summary>
+/// <param name="Kmh">Belt speed the treadmill reported, in km/h.</param>
+/// <param name="At">UTC time the reading arrived.</param>
 internal sealed record BeltReading(double Kmh, DateTime At);
 
 /// <summary>

@@ -15,6 +15,7 @@ namespace BCUKCompanion.ExpiredMinotaur.Wiz.UI;
 public sealed class WizDiscoverDevicesDialog : Window
 {
     /// <summary>One row of the results list: a discovered device, shown with its inferred type.</summary>
+    /// <param name="device">The device that answered discovery.</param>
     private sealed class DiscoveredItem(WizDiscoveredDevice device)
     {
         /// <summary>The device that answered discovery.</summary>

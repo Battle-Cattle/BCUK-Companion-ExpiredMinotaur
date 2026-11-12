@@ -48,6 +48,8 @@ public sealed class WizClient
     /// One request on the wire. Lowercase parameter names so System.Text.Json emits the exact
     /// "method"/"params" format the Wiz LAN protocol expects, with no naming-policy configuration needed.
     /// </summary>
+    /// <param name="method">Name of the Wiz LAN protocol method to invoke, e.g. <c>setPilot</c>.</param>
+    /// <param name="params">Method arguments, serialized as the request's <c>params</c> object.</param>
     private sealed record WizRequest(string method, object @params);
 
     /// <summary>Creates a client that talks to devices on the WiZ port and discovers them by LAN broadcast.</summary>

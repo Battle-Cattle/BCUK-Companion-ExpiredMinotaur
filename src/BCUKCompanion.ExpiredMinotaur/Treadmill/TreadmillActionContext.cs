@@ -7,6 +7,7 @@ namespace BCUKCompanion.ExpiredMinotaur.Treadmill;
 /// the live <see cref="TreadmillClient"/> without Core knowing the type. Unlike Wiz, there's
 /// exactly one treadmill, so this has no device list to expose.
 /// </summary>
+/// <param name="client">The live treadmill client the actions send their commands through.</param>
 public sealed class TreadmillActionContext(TreadmillClient client) : IEventActionContext
 {
     /// <summary>The live treadmill client the actions send their commands through.</summary>
