@@ -6,6 +6,8 @@ namespace BCUKCompanion.ExpiredMinotaur.Wiz;
 /// The <see cref="IEventActionContext"/> ExpiredMinotaur's Wiz actions resolve to reach the
 /// live <see cref="WizClient"/> and the current device list without Core knowing either type.
 /// </summary>
+/// <param name="client">The live client the Wiz actions send their commands through.</param>
+/// <param name="devices">The configured Wiz devices the actions can target.</param>
 public sealed class WizActionContext(WizClient client, IReadOnlyList<WizDevice> devices) : IEventActionContext
 {
     /// <summary>The client the actions send their commands through.</summary>
