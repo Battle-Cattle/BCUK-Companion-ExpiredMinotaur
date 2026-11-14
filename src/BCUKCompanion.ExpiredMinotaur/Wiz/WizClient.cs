@@ -235,7 +235,9 @@ public sealed class WizClient
                 return null;
             }
 
+            // A blank or separator-only "mac" counts as none, so it can never match another device's.
             string? mac = result.TryGetProperty("mac", out var macEl) && macEl.ValueKind == JsonValueKind.String
+                && WizDeviceList.NormalizeMac(macEl.GetString()) is { Length: > 0 }
                 ? macEl.GetString()
                 : null;
             return new WizDiscoveredDevice(ipAddress, moduleName, mac);

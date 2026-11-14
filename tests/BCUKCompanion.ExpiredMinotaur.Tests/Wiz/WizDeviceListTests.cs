@@ -87,6 +87,8 @@ public sealed class WizDeviceListTests
     [InlineData("a8bb50112233", "a8bb50112234", false)]
     [InlineData(null, "a8bb50112233", false)]
     [InlineData("a8bb50112233", null, false)]
+    [InlineData("", "", false)]
+    [InlineData("--", ":", false)]
     public void SameMac_IgnoresCaseAndSeparators(string? a, string? b, bool expected)
     {
         Assert.Equal(expected, WizDeviceList.SameMac(a, b));

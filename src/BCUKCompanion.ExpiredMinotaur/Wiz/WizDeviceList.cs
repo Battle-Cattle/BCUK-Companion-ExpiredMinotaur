@@ -48,9 +48,9 @@ internal static class WizDeviceList
     /// <summary>Whether two MAC addresses are the same, ignoring case and any ':' or '-' separators.</summary>
     /// <param name="a">One MAC address, or null.</param>
     /// <param name="b">The other MAC address, or null.</param>
-    /// <returns>True when both are present and name the same hardware address.</returns>
+    /// <returns>True when both are present, not blank, and name the same hardware address.</returns>
     public static bool SameMac(string? a, string? b) =>
-        a is not null && b is not null && string.Equals(NormalizeMac(a), NormalizeMac(b), StringComparison.OrdinalIgnoreCase);
+        NormalizeMac(a) is { Length: > 0 } left && string.Equals(left, NormalizeMac(b), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Fills in the MAC address of devices saved without one, from discovery replies at the same
@@ -78,8 +78,9 @@ internal static class WizDeviceList
         return updated;
     }
 
-    /// <summary>Strips the separators from a MAC address.</summary>
-    /// <param name="mac">The MAC address as written.</param>
-    /// <returns>Just its hex digits.</returns>
-    private static string NormalizeMac(string mac) => mac.Replace(":", string.Empty).Replace("-", string.Empty);
+    /// <summary>Strips the separators and whitespace from a MAC address.</summary>
+    /// <param name="mac">The MAC address as written, or null.</param>
+    /// <returns>Just its hex digits (empty for a blank one), or null for null.</returns>
+    internal static string? NormalizeMac(string? mac) =>
+        mac?.Replace(":", string.Empty).Replace("-", string.Empty).Trim();
 }

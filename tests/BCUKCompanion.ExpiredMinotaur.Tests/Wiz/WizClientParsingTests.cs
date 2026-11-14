@@ -59,6 +59,8 @@ public sealed class WizClientParsingTests
     [Theory]
     [InlineData("""{"result":{"moduleName":"ESP25_SHRGB_01"}}""", "ESP25_SHRGB_01")]
     [InlineData("""{"result":{"moduleName":"ESP25_SHRGB_01","mac":42}}""", "ESP25_SHRGB_01")]
+    [InlineData("""{"result":{"moduleName":"ESP25_SHRGB_01","mac":""}}""", "ESP25_SHRGB_01")]
+    [InlineData("""{"result":{"moduleName":"ESP25_SHRGB_01","mac":"--"}}""", "ESP25_SHRGB_01")]
     [InlineData("""{"result":{"mac":"a8bb50112233"}}""", null)]
     [InlineData("""{"error":{}}""", null)]
     [InlineData("not json", null)]

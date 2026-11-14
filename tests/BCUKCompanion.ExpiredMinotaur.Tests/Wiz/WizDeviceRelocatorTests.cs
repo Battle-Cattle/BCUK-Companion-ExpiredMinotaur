@@ -22,8 +22,11 @@ public sealed class WizDeviceRelocatorTests : IDisposable
         }
     }
 
+    private int discoveries;
+
     private async IAsyncEnumerable<WizDiscoveredDevice> Discover(TimeSpan window, [EnumeratorCancellation] CancellationToken ct)
     {
+        discoveries++;
         foreach (var device in answering)
         {
             await Task.Yield();
@@ -108,6 +111,21 @@ public sealed class WizDeviceRelocatorTests : IDisposable
 
         Assert.NotEmpty(fake.Requests);
         Assert.Equal(fake.IpAddress, Assert.Single(store.Load().Devices).IpAddress);
+    }
+
+    [Fact]
+    public async Task ALaterActionInTheSameDispatch_GoesStraightToTheNewAddress()
+    {
+        using var fake = new FakeWizDevice((_, _) => """{"result":{"success":true}}""");
+        var device = SavedDevice("127.0.0.9");
+        answering.Add(new WizDiscoveredDevice(fake.IpAddress, "ESP25_SHRGB_01", Mac));
+        var context = new WizActionContext(fake.CreateClient(), [device], Relocator());
+
+        Assert.True(await new WizTurnOnAction { DeviceId = device.Id }.ExecuteAsync(context, CancellationToken.None));
+        Assert.True(await new WizTurnOffAction { DeviceId = device.Id }.ExecuteAsync(context, CancellationToken.None));
+
+        Assert.Equal(1, discoveries);
+        Assert.Equal(fake.IpAddress, context.ResolveDevice(device.Id)?.IpAddress);
     }
 
     [Fact]
