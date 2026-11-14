@@ -13,6 +13,9 @@ public sealed class TreadmillNudgeSpeedAction : IEventAction
     /// <summary>The <c>kind</c> this action is stored under in actions-config.json.</summary>
     public const string ActionKind = "treadmill.nudgeSpeed";
 
+    /// <summary>Why a nudge fails while the treadmill isn't connected.</summary>
+    public const string NotConnectedMessage = "The treadmill isn't connected. Open Actions... and click Connect Treadmill.";
+
     /// <summary>How much to change the target speed by, in km/h; negative slows down.</summary>
     public double DeltaKmh { get; set; }
 
@@ -27,11 +30,9 @@ public sealed class TreadmillNudgeSpeedAction : IEventAction
         ? $"Speed up by {DeltaKmh:0.0} km/h"
         : $"Slow down by {Math.Abs(DeltaKmh):0.0} km/h";
 
-    // Connection state is deliberately not checked here — the treadmill is manually
-    // connected (see TreadmillClient), so mappings must be configurable while it's off or
-    // unpaired. ExecuteAsync/NudgeSpeedAsync already fail gracefully (return false, not
-    // throw) when disconnected, which is enough for the dispatcher to report the action as
-    // unsuccessful without blocking edits made while disconnected.
+    // Connection state is deliberately not checked here — the treadmill is connected
+    // separately (see TreadmillClient), so mappings must be configurable while it's off or
+    // unpaired. ExecuteAsync reports a disconnected treadmill instead, when the action runs.
     /// <summary>Rejects a zero delta, which would do nothing.</summary>
     /// <param name="context">Unused: see the comment above.</param>
     /// <returns>One error for a zero delta; otherwise empty.</returns>
@@ -42,11 +43,18 @@ public sealed class TreadmillNudgeSpeedAction : IEventAction
     /// <param name="context">Must provide a <see cref="TreadmillActionContext"/>.</param>
     /// <param name="cancellationToken">Cancels the nudge.</param>
     /// <returns>Whether the treadmill accepted the new target.</returns>
-    /// <exception cref="InvalidOperationException">The context has no <see cref="TreadmillActionContext"/>.</exception>
+    /// <exception cref="InvalidOperationException">The context has no <see cref="TreadmillActionContext"/>, or the treadmill isn't connected (<see cref="NotConnectedMessage"/>).</exception>
     public async Task<bool> ExecuteAsync(IEventActionContext context, CancellationToken cancellationToken)
     {
         var client = context.GetService<TreadmillActionContext>()?.Client
             ?? throw new InvalidOperationException("Treadmill action context not available.");
+
+        if (!client.IsConnected)
+        {
+            // Thrown rather than returning false, so the failure balloon and the bot's
+            // acknowledgement say why the speed didn't change.
+            throw new InvalidOperationException(NotConnectedMessage);
+        }
 
         return await client.NudgeSpeedAsync(DeltaKmh, cancellationToken).ConfigureAwait(false);
     }

@@ -56,6 +56,13 @@ public sealed class TreadmillClient : IDisposable
     /// </summary>
     public event EventHandler<string>? StatusChanged;
 
+    /// <summary>
+    /// Raised when the treadmill connects, is disconnected on request, or drops on its own
+    /// (powered off, out of range). Fires on whatever thread made the change; subscribers must not
+    /// call back into this client synchronously.
+    /// </summary>
+    public event EventHandler<TreadmillConnectionChange>? ConnectionChanged;
+
     /// <summary>Whether a treadmill is connected and accepting commands.</summary>
     public bool IsConnected { get; private set; }
 
@@ -179,6 +186,7 @@ public sealed class TreadmillClient : IDisposable
             RaiseStatus(warnings.Count > 0
                 ? $"Connected. WARNING: {string.Join(" | ", warnings)}"
                 : "Connected.");
+            ConnectionChanged?.Invoke(this, TreadmillConnectionChange.Connected);
             return true;
         }
         finally
@@ -224,7 +232,7 @@ public sealed class TreadmillClient : IDisposable
     /// </summary>
     /// <param name="onlyDevice">The device whose connection was lost, or null to disconnect whatever is current.</param>
     /// <param name="status">The status line to raise once torn down.</param>
-    /// <returns>A task that completes once the teardown has finished or been skipped.</returns>
+    /// <returns>A task that completes once the teardown has finished (and <see cref="ConnectionChanged"/> has been raised) or been skipped.</returns>
     private async Task DisconnectAsync(ITreadmillDevice? onlyDevice, string status)
     {
         // Wait for any write already in flight (a Nudge) — or a ConnectAsync
@@ -259,6 +267,7 @@ public sealed class TreadmillClient : IDisposable
         }
 
         RaiseStatus(status);
+        ConnectionChanged?.Invoke(this, onlyDevice is null ? TreadmillConnectionChange.Disconnected : TreadmillConnectionChange.Dropped);
     }
 
     /// <summary>
@@ -433,4 +442,17 @@ public sealed class TreadmillClient : IDisposable
         // unless AvailableWaitHandle is touched (it never is here), so leaving it for the GC
         // costs nothing.
     }
+}
+
+/// <summary>How a <see cref="TreadmillClient"/>'s connection changed.</summary>
+public enum TreadmillConnectionChange
+{
+    /// <summary>It connected.</summary>
+    Connected,
+
+    /// <summary>It was disconnected on request (the Disconnect button).</summary>
+    Disconnected,
+
+    /// <summary>It dropped on its own: the treadmill was powered off or went out of range.</summary>
+    Dropped,
 }

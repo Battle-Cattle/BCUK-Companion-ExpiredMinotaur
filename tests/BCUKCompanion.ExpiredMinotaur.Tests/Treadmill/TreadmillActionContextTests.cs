@@ -41,11 +41,13 @@ public sealed class TreadmillActionContextTests
     }
 
     [Fact]
-    public async Task NudgeSpeedAction_FailsWhileDisconnected()
+    public async Task NudgeSpeedAction_WhileDisconnected_SaysTheTreadmillIsntConnected()
     {
         using var client = CreateClient(new FakeTreadmillDevice(), new FakeTimeProvider());
 
-        Assert.False(await new TreadmillNudgeSpeedAction { DeltaKmh = 1.0 }
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => new TreadmillNudgeSpeedAction { DeltaKmh = 1.0 }
             .ExecuteAsync(new TreadmillActionContext(client), CancellationToken.None));
+
+        Assert.Equal(TreadmillNudgeSpeedAction.NotConnectedMessage, ex.Message);
     }
 }
