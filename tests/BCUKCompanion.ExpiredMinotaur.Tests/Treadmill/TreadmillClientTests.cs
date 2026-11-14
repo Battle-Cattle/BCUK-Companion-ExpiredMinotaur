@@ -415,6 +415,48 @@ public sealed class TreadmillClientTests : IDisposable
     }
 
     [Fact]
+    public async Task ConnectionChanged_IsRaisedAfterTheLock_SoAHandlerCanCallBackIn()
+    {
+        // A handler that synchronously waits on another lock-taking call would deadlock if
+        // Connected were raised while the client still held its lock.
+        client.ConnectionChanged += (_, e) =>
+        {
+            if (e.Change == TreadmillConnectionChange.Connected)
+            {
+                Assert.True(client.DisconnectAsync().Wait(TimeSpan.FromSeconds(5)));
+            }
+        };
+
+        Assert.True(await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.False(client.IsConnected);
+    }
+
+    [Fact]
+    public async Task AutoReconnect_FollowsTheClientsDropsAndDisconnects()
+    {
+        string memoryFile = Path.Combine(Path.GetTempPath(), $"bcuk-treadmill-{Guid.NewGuid():N}");
+        var reconnector = new BCUKCompanion.ExpiredMinotaur.Treadmill.TreadmillReconnector(_ => Task.FromResult(false), new FakeTimeProvider());
+        using var auto = new BCUKCompanion.ExpiredMinotaur.Treadmill.TreadmillAutoReconnect(reconnector, memoryFile);
+        auto.Attach(client);
+        try
+        {
+            await ConnectAsync();
+            Assert.True(auto.WasConnected);
+
+            devices[0].LoseConnection();
+            Assert.True(reconnector.IsRunning);
+
+            await client.DisconnectAsync();
+            Assert.False(reconnector.IsRunning);
+            Assert.False(auto.WasConnected);
+        }
+        finally
+        {
+            File.Delete(memoryFile);
+        }
+    }
+
+    [Fact]
     public async Task UnreadableTreadmillData_IsReported()
     {
         await ConnectAsync();

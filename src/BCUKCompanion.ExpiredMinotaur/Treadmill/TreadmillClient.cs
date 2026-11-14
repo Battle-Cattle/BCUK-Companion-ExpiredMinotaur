@@ -132,11 +132,27 @@ public sealed class TreadmillClient : IDisposable
     }
 
     /// <summary>
-    /// Scans for a fitness machine, connects, requests control and starts following the belt.
+    /// Scans for a fitness machine, connects, requests control and starts following the belt,
+    /// then raises <see cref="ConnectionChanged"/> once the client's lock has been released.
     /// </summary>
     /// <param name="cancellationToken">Cancels the scan and the wait for the first speed reading.</param>
     /// <returns>True once connected; false if already connected, nothing was found, or it failed.</returns>
     public async Task<bool> ConnectAsync(CancellationToken cancellationToken = default)
+    {
+        if (await ConnectUnderLockAsync(cancellationToken).ConfigureAwait(false) is not { } sequence)
+        {
+            return false;
+        }
+
+        // Raised after the lock is released, so a handler can call back into this client.
+        ConnectionChanged?.Invoke(this, new TreadmillConnectionChanged(TreadmillConnectionChange.Connected, sequence));
+        return true;
+    }
+
+    /// <summary>Does <see cref="ConnectAsync"/>'s work while holding the client's lock.</summary>
+    /// <param name="cancellationToken">Cancels the scan and the wait for the first speed reading.</param>
+    /// <returns>A task whose result is the connection change's sequence number once connected; null if already connected, nothing was found, or it failed.</returns>
+    private async Task<long?> ConnectUnderLockAsync(CancellationToken cancellationToken)
     {
         // Held for the entire method — see the writeLock field comment — so a concurrent
         // DisconnectAsync can never dispose/replace the device/`controlPointService` out from
@@ -147,7 +163,7 @@ public sealed class TreadmillClient : IDisposable
         {
             if (Volatile.Read(ref disposed) != 0)
             {
-                return false;
+                return null;
             }
 
             if (IsConnected)
@@ -158,7 +174,7 @@ public sealed class TreadmillClient : IDisposable
                 // a device that's no longer actually connected. Reject the reconnect outright
                 // rather than risk that; callers must Disconnect first.
                 RaiseStatus("Already connected.");
-                return false;
+                return null;
             }
 
             var service = await setup.RunAsync(devices.Current, cancellationToken).ConfigureAwait(false);
@@ -168,7 +184,7 @@ public sealed class TreadmillClient : IDisposable
                 // ran concurrently — don't publish a connected state for an object whose owner
                 // already tried to tear it down. Cleanup happens in `finally` below, alongside
                 // every other early-return path in this method.
-                return false;
+                return null;
             }
 
             controlPointService = service;
@@ -183,7 +199,7 @@ public sealed class TreadmillClient : IDisposable
                 // handing back "connected" state whose owner already tried to dispose this
                 // object. `finally` below now triggers cleanup on `disposed` alone, so it will
                 // undo the IsConnected/timer state this block just set.
-                return false;
+                return null;
             }
 
             followTimer.Change(FollowInterval, FollowInterval);
@@ -191,8 +207,7 @@ public sealed class TreadmillClient : IDisposable
             RaiseStatus(warnings.Count > 0
                 ? $"Connected. WARNING: {string.Join(" | ", warnings)}"
                 : "Connected.");
-            ConnectionChanged?.Invoke(this, new TreadmillConnectionChanged(TreadmillConnectionChange.Connected, connectedSequence));
-            return true;
+            return connectedSequence;
         }
         finally
         {
