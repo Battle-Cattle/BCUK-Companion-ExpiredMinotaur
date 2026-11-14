@@ -1,3 +1,4 @@
+using System.IO;
 using BCUKCompanion.Core;
 using BCUKCompanion.Core.Actions;
 using BCUKCompanion.ExpiredMinotaur.Treadmill;
@@ -20,7 +21,8 @@ internal static class Program
     internal const string DataFolderName = "BCUKCompanion.ExpiredMinotaur";
 
     /// <summary>
-    /// Registers this app's actions (WiZ lights, treadmill) and runs the shared companion tray app,
+    /// Registers this app's actions (WiZ lights, treadmill), keeps the treadmill reconnecting
+    /// after drops, and runs the shared companion tray app,
     /// dispatching bot events — reward redemptions and advanced commands — to the mapped actions.
     /// </summary>
     [STAThread]
@@ -29,8 +31,12 @@ internal static class Program
         var store = new ActionsConfigStore(DataFolderName, CreateRegistry());
         var wizClient = new WizClient();
         using var treadmillClient = new TreadmillClient();
+        using var treadmillAutoReconnect = TreadmillAutoReconnect.Create(
+            treadmillClient,
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), DataFolderName, "treadmill-autoconnect"),
+            TimeProvider.System);
 
-        RunTrayApp(CreateOptions(store, wizClient, treadmillClient));
+        RunTrayApp(CreateOptions(store, wizClient, treadmillClient, treadmillAutoReconnect));
     }
 
     /// <summary>Runs the shared tray app until the user exits it; tests replace it to see the options without starting WPF.</summary>
@@ -55,18 +61,32 @@ internal static class Program
     /// <param name="store">Loads the saved devices and mappings for each event, and backs the Actions window.</param>
     /// <param name="wizClient">The client WiZ actions send their commands through.</param>
     /// <param name="treadmillClient">The treadmill connection treadmill actions nudge.</param>
+    /// <param name="treadmillAutoReconnect">Reconnects the treadmill after a drop and at launch, with balloons through the tray icon; null for none.</param>
     /// <returns>The options to pass to <see cref="CompanionTrayApplication.Run"/>.</returns>
-    internal static CompanionTrayAppOptions CreateOptions(ActionsConfigStore store, WizClient wizClient, TreadmillClient treadmillClient)
+    internal static CompanionTrayAppOptions CreateOptions(
+        ActionsConfigStore store, WizClient wizClient, TreadmillClient treadmillClient, TreadmillAutoReconnect? treadmillAutoReconnect = null)
     {
         // Set via OnClientReady once the tray shell creates (or recreates, on a bot-host
         // change) its CompanionClient. Settings windows read this through a Func so they
         // always see the current instance, even one created after the window itself.
         CompanionClient? companionClient = null;
 
+        // Finds a WiZ device again by MAC address when it stops answering at its saved IP.
+        var relocator = new WizDeviceRelocator((window, ct) => wizClient.DiscoverAsync(window, ct), store);
+
         return new CompanionTrayAppOptions
         {
             DataFolderName = DataFolderName,
             OnClientReady = readyClient => companionClient = readyClient,
+            // Once balloons can show, reconnect the treadmill if it was connected when the app last ran.
+            OnTrayIconReady = showBalloon =>
+            {
+                if (treadmillAutoReconnect is not null)
+                {
+                    treadmillAutoReconnect.ShowBalloon = showBalloon;
+                    treadmillAutoReconnect.StartAtLaunch();
+                }
+            },
             // Installs any newer GitHub release in the background, restarting the app, and adds
             // a "Check for updates..." tray menu item.
             Updates = new CompanionUpdateOptions
@@ -83,7 +103,7 @@ internal static class Program
                 return new EventActionDispatcher(
                     () => config.Mappings,
                     () => new CompositeEventActionContext(
-                        new WizActionContext(wizClient, config.Devices),
+                        new WizActionContext(wizClient, config.Devices, relocator),
                         new TreadmillActionContext(treadmillClient)));
             },
             AdditionalMenuItems = new[]

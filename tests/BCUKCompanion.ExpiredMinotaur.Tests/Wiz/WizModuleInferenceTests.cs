@@ -30,8 +30,8 @@ public sealed class WizModuleInferenceTests
     {
         var id = Guid.NewGuid();
 
-        var device = WizModuleInference.ToDevice(new WizDiscoveredDevice("192.168.1.20", "ESP25_SHRGB_01"), id);
+        var device = WizModuleInference.ToDevice(new WizDiscoveredDevice("192.168.1.20", "ESP25_SHRGB_01", "a8bb50112233"), id);
 
-        Assert.Equal(new WizDevice(id, "ESP25_SHRGB_01", "192.168.1.20", WizDeviceType.Light, true, true, true), device);
+        Assert.Equal(new WizDevice(id, "ESP25_SHRGB_01", "192.168.1.20", WizDeviceType.Light, true, true, true, "a8bb50112233"), device);
     }
 }

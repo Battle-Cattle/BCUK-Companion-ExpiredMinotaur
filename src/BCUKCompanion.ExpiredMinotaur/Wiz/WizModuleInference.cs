@@ -35,7 +35,7 @@ internal static class WizModuleInference
     /// <summary>Builds a new device entry for a discovered device, named after its module.</summary>
     /// <param name="discovered">The device that answered discovery.</param>
     /// <param name="id">The new entry's ID.</param>
-    /// <returns>A device named after its module, at its discovered address, with the inferred type and capabilities.</returns>
+    /// <returns>A device named after its module, at its discovered address (and with its MAC address), with the inferred type and capabilities.</returns>
     public static WizDevice ToDevice(WizDiscoveredDevice discovered, Guid id)
     {
         var (color, colorTemp, dimming) = InferCapabilities(discovered.ModuleName);
@@ -46,7 +46,8 @@ internal static class WizModuleInference
             InferDeviceType(discovered.ModuleName),
             color,
             colorTemp,
-            dimming);
+            dimming,
+            discovered.MacAddress);
     }
 
     /// <summary>Whether the module name identifies a smart plug.</summary>

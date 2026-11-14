@@ -373,6 +373,122 @@ public sealed class TreadmillClientTests : IDisposable
     }
 
     [Fact]
+    public async Task ConnectionChanged_SaysWhetherItConnectedWasDisconnectedOrDropped()
+    {
+        var changes = new ConcurrentQueue<TreadmillConnectionChanged>();
+        client.ConnectionChanged += (_, change) => changes.Enqueue(change);
+
+        await ConnectAsync();
+        await client.DisconnectAsync();
+        await ConnectAsync();
+        devices[1].LoseConnection();
+        devices[0].LoseConnection(); // Already replaced: no change.
+
+        Assert.Equal(
+            [new(TreadmillConnectionChange.Connected, 1), new(TreadmillConnectionChange.Disconnected, 2),
+             new(TreadmillConnectionChange.Connected, 3), new TreadmillConnectionChanged(TreadmillConnectionChange.Dropped, 4)],
+            changes);
+    }
+
+    [Fact]
+    public async Task AutoReconnect_ReconnectsAfterADrop_AndCountsAnExistingConnection()
+    {
+        string memoryFile = Path.Combine(Path.GetTempPath(), $"bcuk-treadmill-{Guid.NewGuid():N}");
+        using var auto = BCUKCompanion.ExpiredMinotaur.Treadmill.TreadmillAutoReconnect.Create(client, memoryFile, TimeProvider.System);
+        try
+        {
+            // At launch it was connected last time: one immediate attempt connects it.
+            File.WriteAllText(memoryFile, "connected");
+            auto.StartAtLaunch();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (!client.IsConnected)
+            {
+                await Task.Delay(10, timeout.Token);
+            }
+
+            Assert.True(auto.WasConnected);
+        }
+        finally
+        {
+            File.Delete(memoryFile);
+        }
+    }
+
+    [Fact]
+    public async Task ConnectionChanged_IsRaisedAfterTheLock_SoAHandlerCanCallBackIn()
+    {
+        // A handler that synchronously waits on another lock-taking call would deadlock if
+        // Connected were raised while the client still held its lock.
+        client.ConnectionChanged += (_, e) =>
+        {
+            if (e.Change == TreadmillConnectionChange.Connected)
+            {
+                Assert.True(client.DisconnectAsync().Wait(TimeSpan.FromSeconds(5)));
+            }
+        };
+
+        Assert.True(await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.False(client.IsConnected);
+    }
+
+    [Fact]
+    public async Task AutoReconnect_FollowsTheClientsDropsAndDisconnects()
+    {
+        string memoryFile = Path.Combine(Path.GetTempPath(), $"bcuk-treadmill-{Guid.NewGuid():N}");
+        var reconnector = new BCUKCompanion.ExpiredMinotaur.Treadmill.TreadmillReconnector(_ => Task.FromResult(false), new FakeTimeProvider());
+        using var auto = new BCUKCompanion.ExpiredMinotaur.Treadmill.TreadmillAutoReconnect(reconnector, memoryFile);
+        auto.Attach(client);
+        try
+        {
+            await ConnectAsync();
+            Assert.True(auto.WasConnected);
+
+            devices[0].LoseConnection();
+            Assert.True(reconnector.IsRunning);
+
+            await client.DisconnectAsync();
+            Assert.False(reconnector.IsRunning);
+            Assert.False(auto.WasConnected);
+        }
+        finally
+        {
+            File.Delete(memoryFile);
+        }
+    }
+
+    [Fact]
+    public async Task AutoReconnect_IgnoresADropDeliveredAfterALaterDisconnect()
+    {
+        string memoryFile = Path.Combine(Path.GetTempPath(), $"bcuk-treadmill-{Guid.NewGuid():N}");
+        var reconnector = new BCUKCompanion.ExpiredMinotaur.Treadmill.TreadmillReconnector(_ => Task.FromResult(false), new FakeTimeProvider());
+        using var auto = new BCUKCompanion.ExpiredMinotaur.Treadmill.TreadmillAutoReconnect(reconnector, memoryFile);
+
+        // Subscribed before the auto-reconnect, so it runs first: on the drop it disconnects by hand,
+        // which delivers Disconnected to the auto-reconnect before the drop itself reaches it.
+        client.ConnectionChanged += (_, e) =>
+        {
+            if (e.Change == TreadmillConnectionChange.Dropped)
+            {
+                Assert.True(client.DisconnectAsync().Wait(TimeSpan.FromSeconds(5)));
+            }
+        };
+        auto.Attach(client);
+        try
+        {
+            await ConnectAsync();
+
+            devices[0].LoseConnection();
+
+            Assert.False(reconnector.IsRunning);
+            Assert.False(auto.WasConnected);
+        }
+        finally
+        {
+            File.Delete(memoryFile);
+        }
+    }
+
+    [Fact]
     public async Task UnreadableTreadmillData_IsReported()
     {
         await ConnectAsync();

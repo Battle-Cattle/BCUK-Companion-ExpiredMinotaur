@@ -50,10 +50,13 @@ public abstract class WizDeviceActionBase : IEventAction
         return errors;
     }
 
-    /// <summary>Sends the action to its device.</summary>
+    /// <summary>
+    /// Sends the action to its device. If the device doesn't answer, looks it up by MAC address (it
+    /// may have a new IP address) and tries once more there.
+    /// </summary>
     /// <param name="context">Must provide a <see cref="WizActionContext"/>.</param>
     /// <param name="cancellationToken">Cancels the command.</param>
-    /// <returns>Whether the device accepted the command.</returns>
+    /// <returns>Whether the device accepted the command, at its saved address or its new one.</returns>
     /// <exception cref="InvalidOperationException">The context has no Wiz context, or the device no longer exists.</exception>
     public async Task<bool> ExecuteAsync(IEventActionContext context, CancellationToken cancellationToken)
     {
@@ -62,7 +65,14 @@ public abstract class WizDeviceActionBase : IEventAction
         var device = wiz.ResolveDevice(DeviceId)
             ?? throw new InvalidOperationException("Device not found.");
 
-        return await SendAsync(wiz.Client, device, cancellationToken).ConfigureAwait(false);
+        if (await SendAsync(wiz.Client, device, cancellationToken).ConfigureAwait(false))
+        {
+            return true;
+        }
+
+        // No answer: its DHCP lease may have moved it. Look it up by MAC address and try once more there.
+        return await wiz.RelocateAsync(device, cancellationToken).ConfigureAwait(false) is { } moved
+            && await SendAsync(wiz.Client, moved, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>The action-specific part of <see cref="Describe"/>, e.g. "SetBrightness 50%".</summary>

@@ -49,12 +49,23 @@ public sealed class TreadmillClient : IDisposable
 
     private ControlPointService? controlPointService;
 
+    // Numbers each connection change in the order it happened; only written under writeLock.
+    private long connectionSequence;
+
     /// <summary>
     /// Fires on whatever thread triggered it (a BLE callback thread, or the follow
     /// timer's thread-pool thread) — any WPF subscriber must marshal via Dispatcher.Invoke
     /// itself, same pattern the test app already uses.
     /// </summary>
     public event EventHandler<string>? StatusChanged;
+
+    /// <summary>
+    /// Raised when the treadmill connects, is disconnected on request, or drops on its own
+    /// (powered off, out of range). Fires on whatever thread made the change, after the change has
+    /// released the client's lock, so two changes can be raised out of order: compare their
+    /// <see cref="TreadmillConnectionChanged.Sequence"/> and ignore one older than the last seen.
+    /// </summary>
+    public event EventHandler<TreadmillConnectionChanged>? ConnectionChanged;
 
     /// <summary>Whether a treadmill is connected and accepting commands.</summary>
     public bool IsConnected { get; private set; }
@@ -121,11 +132,27 @@ public sealed class TreadmillClient : IDisposable
     }
 
     /// <summary>
-    /// Scans for a fitness machine, connects, requests control and starts following the belt.
+    /// Scans for a fitness machine, connects, requests control and starts following the belt,
+    /// then raises <see cref="ConnectionChanged"/> once the client's lock has been released.
     /// </summary>
     /// <param name="cancellationToken">Cancels the scan and the wait for the first speed reading.</param>
     /// <returns>True once connected; false if already connected, nothing was found, or it failed.</returns>
     public async Task<bool> ConnectAsync(CancellationToken cancellationToken = default)
+    {
+        if (await ConnectUnderLockAsync(cancellationToken).ConfigureAwait(false) is not { } sequence)
+        {
+            return false;
+        }
+
+        // Raised after the lock is released, so a handler can call back into this client.
+        ConnectionChanged?.Invoke(this, new TreadmillConnectionChanged(TreadmillConnectionChange.Connected, sequence));
+        return true;
+    }
+
+    /// <summary>Does <see cref="ConnectAsync"/>'s work while holding the client's lock.</summary>
+    /// <param name="cancellationToken">Cancels the scan and the wait for the first speed reading.</param>
+    /// <returns>A task whose result is the connection change's sequence number once connected; null if already connected, nothing was found, or it failed.</returns>
+    private async Task<long?> ConnectUnderLockAsync(CancellationToken cancellationToken)
     {
         // Held for the entire method — see the writeLock field comment — so a concurrent
         // DisconnectAsync can never dispose/replace the device/`controlPointService` out from
@@ -136,7 +163,7 @@ public sealed class TreadmillClient : IDisposable
         {
             if (Volatile.Read(ref disposed) != 0)
             {
-                return false;
+                return null;
             }
 
             if (IsConnected)
@@ -147,31 +174,29 @@ public sealed class TreadmillClient : IDisposable
                 // a device that's no longer actually connected. Reject the reconnect outright
                 // rather than risk that; callers must Disconnect first.
                 RaiseStatus("Already connected.");
-                return false;
+                return null;
             }
 
             var service = await setup.RunAsync(devices.Current, cancellationToken).ConfigureAwait(false);
-            if (service is null || Volatile.Read(ref disposed) != 0)
+            if (service is null)
             {
-                // Either a step failed (already reported via RaiseStatus), or Dispose()
-                // ran concurrently — don't publish a connected state for an object whose owner
-                // already tried to tear it down. Cleanup happens in `finally` below, alongside
-                // every other early-return path in this method.
-                return false;
+                // A step failed (already reported via RaiseStatus). Cleanup happens in `finally`
+                // below, alongside every other early-return path in this method.
+                return null;
             }
 
             controlPointService = service;
             IsConnected = true;
+            long connectedSequence = ++connectionSequence;
 
             if (Volatile.Read(ref disposed) != 0)
             {
-                // Dispose() set the flag (it does so without holding writeLock, so it can
-                // happen at any point during this call, including right here) after our last
-                // check above but before this publish — decline to report success rather than
-                // handing back "connected" state whose owner already tried to dispose this
-                // object. `finally` below now triggers cleanup on `disposed` alone, so it will
-                // undo the IsConnected/timer state this block just set.
-                return false;
+                // Dispose() ran at some point during this call (it sets the flag without holding
+                // writeLock, so it can happen while setup ran or right up to here) — decline to
+                // report success rather than handing back "connected" state whose owner already
+                // tried to dispose this object. `finally` below triggers cleanup on `disposed`
+                // alone, so it undoes the IsConnected/timer state this block just set.
+                return null;
             }
 
             followTimer.Change(FollowInterval, FollowInterval);
@@ -179,7 +204,7 @@ public sealed class TreadmillClient : IDisposable
             RaiseStatus(warnings.Count > 0
                 ? $"Connected. WARNING: {string.Join(" | ", warnings)}"
                 : "Connected.");
-            return true;
+            return connectedSequence;
         }
         finally
         {
@@ -224,7 +249,7 @@ public sealed class TreadmillClient : IDisposable
     /// </summary>
     /// <param name="onlyDevice">The device whose connection was lost, or null to disconnect whatever is current.</param>
     /// <param name="status">The status line to raise once torn down.</param>
-    /// <returns>A task that completes once the teardown has finished or been skipped.</returns>
+    /// <returns>A task that completes once the teardown has finished (and <see cref="ConnectionChanged"/> has been raised) or been skipped.</returns>
     private async Task DisconnectAsync(ITreadmillDevice? onlyDevice, string status)
     {
         // Wait for any write already in flight (a Nudge) — or a ConnectAsync
@@ -232,6 +257,7 @@ public sealed class TreadmillClient : IDisposable
         // the lock, so we never dispose the FtmsDevice a concurrent write/connect is still
         // using, and never race a Connect that's about to declare itself connected. Async so
         // a WPF click handler awaiting this doesn't freeze the UI for that duration.
+        TreadmillConnectionChanged change;
         await writeLock.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -251,6 +277,8 @@ public sealed class TreadmillClient : IDisposable
             IsConnected = false;
             speed.OnDisconnected();
             devices.Replace();
+            change = new TreadmillConnectionChanged(
+                onlyDevice is null ? TreadmillConnectionChange.Disconnected : TreadmillConnectionChange.Dropped, ++connectionSequence);
         }
         finally
         {
@@ -259,6 +287,7 @@ public sealed class TreadmillClient : IDisposable
         }
 
         RaiseStatus(status);
+        ConnectionChanged?.Invoke(this, change);
     }
 
     /// <summary>
@@ -434,3 +463,21 @@ public sealed class TreadmillClient : IDisposable
         // costs nothing.
     }
 }
+
+/// <summary>How a <see cref="TreadmillClient"/>'s connection changed.</summary>
+public enum TreadmillConnectionChange
+{
+    /// <summary>It connected.</summary>
+    Connected,
+
+    /// <summary>It was disconnected on request (the Disconnect button).</summary>
+    Disconnected,
+
+    /// <summary>It dropped on its own: the treadmill was powered off or went out of range.</summary>
+    Dropped,
+}
+
+/// <summary>A change to a <see cref="TreadmillClient"/>'s connection.</summary>
+/// <param name="Change">How the connection changed.</param>
+/// <param name="Sequence">Increases with each change, in the order the changes happened; a handler can ignore one lower than the last it saw.</param>
+public readonly record struct TreadmillConnectionChanged(TreadmillConnectionChange Change, long Sequence);

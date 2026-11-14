@@ -44,4 +44,43 @@ internal static class WizDeviceList
         IPAddress.TryParse(a, out var left) && IPAddress.TryParse(b, out var right)
             ? left.Equals(right)
             : string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Whether two MAC addresses are the same, ignoring case and any ':' or '-' separators.</summary>
+    /// <param name="a">One MAC address, or null.</param>
+    /// <param name="b">The other MAC address, or null.</param>
+    /// <returns>True when both are present, not blank, and name the same hardware address.</returns>
+    public static bool SameMac(string? a, string? b) =>
+        NormalizeMac(a) is { Length: > 0 } left && string.Equals(left, NormalizeMac(b), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Fills in the MAC address of devices saved without one, from discovery replies at the same
+    /// IP address, so devices added before MAC addresses were recorded can be found again later.
+    /// </summary>
+    /// <param name="devices">The saved devices.</param>
+    /// <param name="replies">Every device that answered discovery.</param>
+    /// <returns>Each device that gained a MAC address, with its index in <paramref name="devices"/>.</returns>
+    public static IReadOnlyList<(int Index, WizDevice Device)> WithDiscoveredMacs(
+        IReadOnlyList<WizDevice> devices, IEnumerable<WizDiscoveredDevice> replies)
+    {
+        var macByAddress = replies
+            .Where(r => r.MacAddress is not null)
+            .GroupBy(r => r.IpAddress)
+            .ToDictionary(g => g.Key, g => g.First().MacAddress!); // Filtered to non-null MACs above.
+        var updated = new List<(int, WizDevice)>();
+        for (var i = 0; i < devices.Count; i++)
+        {
+            if (devices[i].MacAddress is null && macByAddress.TryGetValue(devices[i].IpAddress, out var mac))
+            {
+                updated.Add((i, devices[i] with { MacAddress = mac }));
+            }
+        }
+
+        return updated;
+    }
+
+    /// <summary>Strips the separators and whitespace from a MAC address.</summary>
+    /// <param name="mac">The MAC address as written, or null.</param>
+    /// <returns>Just its hex digits (empty for a blank one), or null for null.</returns>
+    internal static string? NormalizeMac(string? mac) =>
+        mac?.Replace(":", string.Empty).Replace("-", string.Empty).Trim();
 }

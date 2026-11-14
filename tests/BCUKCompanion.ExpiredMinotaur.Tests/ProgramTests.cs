@@ -53,6 +53,28 @@ public sealed class ProgramTests
     }
 
     [SkippableFact]
+    public void CreateOptions_HandsTheTrayBalloonToTheTreadmillAutoReconnect()
+    {
+        WindowsOnly.Skip();
+        using var temp = new TempActionsStore();
+        var treadmill = new FakeTreadmill();
+        string memoryFile = Path.Combine(Path.GetTempPath(), $"bcuk-treadmill-{Guid.NewGuid():N}");
+        using var auto = new BCUKCompanion.ExpiredMinotaur.Treadmill.TreadmillAutoReconnect(
+            new BCUKCompanion.ExpiredMinotaur.Treadmill.TreadmillReconnector(_ => Task.FromResult(false), TimeProvider.System), memoryFile);
+        WpfTest.Run(() =>
+        {
+            var options = Program.CreateOptions(temp.Store, new WizClient(), treadmill.Client, auto);
+            Action<string, string> show = (_, _) => { };
+
+            Assert.NotNull(options.OnTrayIconReady);
+            options.OnTrayIconReady(show);
+
+            Assert.Same(show, auto.ShowBalloon);
+        });
+        treadmill.Client.Dispose();
+    }
+
+    [SkippableFact]
     public void CreateOptions_DispatchesEventsToTheSavedMappings()
     {
         WindowsOnly.Skip();

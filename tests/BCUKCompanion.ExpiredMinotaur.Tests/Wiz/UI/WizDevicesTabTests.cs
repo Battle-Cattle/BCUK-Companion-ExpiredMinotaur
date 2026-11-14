@@ -228,6 +228,29 @@ public sealed class WizDevicesTabTests
     }
 
     [SkippableFact]
+    public void Discover_FillsInTheMacOfAKnownDeviceThatAnswered()
+    {
+        WindowsOnly.Skip();
+        using var fake = new FakeWizDevice((_, _) => """{"result":{"moduleName":"ESP25_SHRGB_01","mac":"a8bb50112233"}}""");
+        WpfTest.Run(() =>
+        {
+            var rig = new Rig(fake.CreateClient());
+            var known = new WizDevice(Guid.NewGuid(), "Lamp", IPAddress.Loopback.ToString(), WizDeviceType.Light, true, true, true);
+            rig.Devices.Add(known);
+            rig.Tab.ShowDialogWindow = window => WpfTest.ShowDialog(window, async dialog =>
+            {
+                await WpfTest.WaitUntil(() => WpfTest.Texts(dialog).Contains("No new devices found."));
+                WpfTest.Click(dialog, "Close");
+            });
+
+            rig.Click("Discover...");
+
+            Assert.Equal(known with { MacAddress = "a8bb50112233" }, rig.Devices[^1]);
+            Assert.Equal(3, rig.Devices.Count);
+        });
+    }
+
+    [SkippableFact]
     public void Discover_Closed_AddsNothing()
     {
         WindowsOnly.Skip();

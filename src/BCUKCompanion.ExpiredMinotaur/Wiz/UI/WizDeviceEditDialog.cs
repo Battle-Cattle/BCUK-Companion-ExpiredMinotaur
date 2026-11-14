@@ -20,6 +20,9 @@ public sealed class WizDeviceEditDialog : Window
 
     private readonly Guid id;
 
+    // Kept through an edit: the MAC address identifies the device even if the user changes its IP.
+    private readonly string? macAddress;
+
     /// <summary>The device as entered, once the dialog closes with OK.</summary>
     public WizDevice? Result { get; private set; }
 
@@ -28,6 +31,7 @@ public sealed class WizDeviceEditDialog : Window
     public WizDeviceEditDialog(WizDevice? existing = null)
     {
         id = existing?.Id ?? Guid.NewGuid();
+        macAddress = existing?.MacAddress;
 
         Title = existing is null ? "Add Device" : "Edit Device";
         Width = 320;
@@ -87,7 +91,8 @@ public sealed class WizDeviceEditDialog : Window
             (WizDeviceType)deviceTypeCombo.SelectedItem!,
             colorCheck.IsChecked ?? false,
             colorTempCheck.IsChecked ?? false,
-            dimmingCheck.IsChecked ?? false);
+            dimmingCheck.IsChecked ?? false,
+            macAddress);
         DialogResult = true;
     }
 }

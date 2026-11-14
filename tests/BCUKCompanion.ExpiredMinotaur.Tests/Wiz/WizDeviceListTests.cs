@@ -80,4 +80,36 @@ public sealed class WizDeviceListTests
     {
         Assert.Equal(expected, WizDeviceList.RemovedMessage(removed));
     }
+
+    [Theory]
+    [InlineData("a8bb50112233", "A8:BB:50:11:22:33", true)]
+    [InlineData("a8-bb-50-11-22-33", "a8bb50112233", true)]
+    [InlineData("a8bb50112233", "a8bb50112234", false)]
+    [InlineData(null, "a8bb50112233", false)]
+    [InlineData("a8bb50112233", null, false)]
+    [InlineData("", "", false)]
+    [InlineData("--", ":", false)]
+    public void SameMac_IgnoresCaseAndSeparators(string? a, string? b, bool expected)
+    {
+        Assert.Equal(expected, WizDeviceList.SameMac(a, b));
+    }
+
+    [Fact]
+    public void WithDiscoveredMacs_FillsInOnlyDevicesSavedWithoutOne()
+    {
+        WizDevice Device(string ip, string? mac) => new(Guid.NewGuid(), ip, ip, WizDeviceType.Light, true, true, true, mac);
+        var devices = new[] { Device("192.168.1.20", null), Device("192.168.1.21", "keep"), Device("192.168.1.22", null) };
+        var replies = new[]
+        {
+            new WizDiscoveredDevice("192.168.1.20", "ESP25_SHRGB_01", "a8bb50000020"),
+            new WizDiscoveredDevice("192.168.1.21", "ESP25_SHRGB_01", "a8bb50000021"),
+            new WizDiscoveredDevice("192.168.1.22", "ESP25_SHRGB_01"),
+            new WizDiscoveredDevice("192.168.1.99", "ESP25_SHRGB_01", "a8bb50000099"),
+        };
+
+        var (index, device) = Assert.Single(WizDeviceList.WithDiscoveredMacs(devices, replies));
+
+        Assert.Equal(0, index);
+        Assert.Equal(devices[0] with { MacAddress = "a8bb50000020" }, device);
+    }
 }
