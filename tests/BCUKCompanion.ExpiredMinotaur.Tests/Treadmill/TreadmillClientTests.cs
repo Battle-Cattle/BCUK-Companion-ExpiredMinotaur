@@ -391,6 +391,30 @@ public sealed class TreadmillClientTests : IDisposable
     }
 
     [Fact]
+    public async Task AutoReconnect_ReconnectsAfterADrop_AndCountsAnExistingConnection()
+    {
+        string memoryFile = Path.Combine(Path.GetTempPath(), $"bcuk-treadmill-{Guid.NewGuid():N}");
+        using var auto = BCUKCompanion.ExpiredMinotaur.Treadmill.TreadmillAutoReconnect.Create(client, memoryFile, TimeProvider.System);
+        try
+        {
+            // At launch it was connected last time: one immediate attempt connects it.
+            File.WriteAllText(memoryFile, "connected");
+            auto.StartAtLaunch();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (!client.IsConnected)
+            {
+                await Task.Delay(10, timeout.Token);
+            }
+
+            Assert.True(auto.WasConnected);
+        }
+        finally
+        {
+            File.Delete(memoryFile);
+        }
+    }
+
+    [Fact]
     public async Task UnreadableTreadmillData_IsReported()
     {
         await ConnectAsync();

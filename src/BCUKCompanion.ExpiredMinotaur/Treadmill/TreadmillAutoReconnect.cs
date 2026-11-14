@@ -25,6 +25,20 @@ public sealed class TreadmillAutoReconnect : IDisposable
         reconnector.Reconnected += (_, _) => ShowBalloon?.Invoke("Treadmill reconnected", "Speed actions work again.");
     }
 
+    /// <summary>Creates the coordinator for <paramref name="client"/>, already following its connection changes.</summary>
+    /// <param name="client">The treadmill client to keep connected.</param>
+    /// <param name="memoryFile">Where "it was connected when the app last ran" is remembered.</param>
+    /// <param name="timeProvider">The clock the waits between reconnect attempts are measured with.</param>
+    /// <returns>A coordinator whose reconnects call <paramref name="client"/>'s ConnectAsync, unless it's already connected.</returns>
+    public static TreadmillAutoReconnect Create(TreadmillClient client, string memoryFile, TimeProvider timeProvider)
+    {
+        var auto = new TreadmillAutoReconnect(
+            new TreadmillReconnector(ct => client.IsConnected ? Task.FromResult(true) : client.ConnectAsync(ct), timeProvider),
+            memoryFile);
+        auto.Attach(client);
+        return auto;
+    }
+
     /// <summary>Shows a tray balloon (title, text); null until the tray icon is ready.</summary>
     public Action<string, string>? ShowBalloon { get; set; }
 

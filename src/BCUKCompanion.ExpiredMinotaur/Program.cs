@@ -31,10 +31,10 @@ internal static class Program
         var store = new ActionsConfigStore(DataFolderName, CreateRegistry());
         var wizClient = new WizClient();
         using var treadmillClient = new TreadmillClient();
-        using var treadmillAutoReconnect = new TreadmillAutoReconnect(
-            new TreadmillReconnector(ct => treadmillClient.IsConnected ? Task.FromResult(true) : treadmillClient.ConnectAsync(ct), TimeProvider.System),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), DataFolderName, "treadmill-autoconnect"));
-        treadmillAutoReconnect.Attach(treadmillClient);
+        using var treadmillAutoReconnect = TreadmillAutoReconnect.Create(
+            treadmillClient,
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), DataFolderName, "treadmill-autoconnect"),
+            TimeProvider.System);
 
         RunTrayApp(CreateOptions(store, wizClient, treadmillClient, treadmillAutoReconnect));
     }

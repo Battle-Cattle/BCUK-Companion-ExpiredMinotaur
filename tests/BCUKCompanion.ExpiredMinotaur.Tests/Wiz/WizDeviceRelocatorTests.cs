@@ -85,6 +85,17 @@ public sealed class WizDeviceRelocatorTests : IDisposable
     }
 
     [Fact]
+    public async Task AConfigThatCantBeSaved_StillReturnsTheMovedDevice()
+    {
+        var device = SavedDevice("192.168.1.20");
+        Directory.CreateDirectory(store.ConfigFilePath + ".tmp"); // Makes the save fail.
+        answering.Add(new WizDiscoveredDevice("192.168.1.45", "ESP25_SHRGB_01", Mac));
+
+        Assert.Equal("192.168.1.45", (await Relocator().RelocateAsync(device, CancellationToken.None))?.IpAddress);
+        Assert.Equal("192.168.1.20", Assert.Single(store.Load().Devices).IpAddress);
+    }
+
+    [Fact]
     public async Task AnActionToADeviceThatMoved_IsSentToItsNewAddress()
     {
         using var fake = new FakeWizDevice((_, _) => """{"result":{"success":true}}""");
