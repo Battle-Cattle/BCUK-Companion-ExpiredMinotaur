@@ -178,12 +178,10 @@ public sealed class TreadmillClient : IDisposable
             }
 
             var service = await setup.RunAsync(devices.Current, cancellationToken).ConfigureAwait(false);
-            if (service is null || Volatile.Read(ref disposed) != 0)
+            if (service is null)
             {
-                // Either a step failed (already reported via RaiseStatus), or Dispose()
-                // ran concurrently — don't publish a connected state for an object whose owner
-                // already tried to tear it down. Cleanup happens in `finally` below, alongside
-                // every other early-return path in this method.
+                // A step failed (already reported via RaiseStatus). Cleanup happens in `finally`
+                // below, alongside every other early-return path in this method.
                 return null;
             }
 
@@ -193,12 +191,11 @@ public sealed class TreadmillClient : IDisposable
 
             if (Volatile.Read(ref disposed) != 0)
             {
-                // Dispose() set the flag (it does so without holding writeLock, so it can
-                // happen at any point during this call, including right here) after our last
-                // check above but before this publish — decline to report success rather than
-                // handing back "connected" state whose owner already tried to dispose this
-                // object. `finally` below now triggers cleanup on `disposed` alone, so it will
-                // undo the IsConnected/timer state this block just set.
+                // Dispose() ran at some point during this call (it sets the flag without holding
+                // writeLock, so it can happen while setup ran or right up to here) — decline to
+                // report success rather than handing back "connected" state whose owner already
+                // tried to dispose this object. `finally` below triggers cleanup on `disposed`
+                // alone, so it undoes the IsConnected/timer state this block just set.
                 return null;
             }
 
