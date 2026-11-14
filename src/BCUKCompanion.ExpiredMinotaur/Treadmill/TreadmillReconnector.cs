@@ -112,7 +112,7 @@ public sealed class TreadmillReconnector : IDisposable
         }
         finally
         {
-            Finish(cts);
+            // Every way out has already cleared `running`: a finish under the lock, or Stop.
             cts.Dispose();
         }
     }
@@ -164,31 +164,21 @@ public sealed class TreadmillReconnector : IDisposable
         }
     }
 
-    /// <summary>Makes one attempt, treating a failure to connect as "not yet".</summary>
+    /// <summary>
+    /// Makes one attempt, treating a failure to connect as "not yet", including a cancellation
+    /// that <see cref="Stop"/> didn't cause (such as a Bluetooth timeout).
+    /// </summary>
     /// <param name="cancellationToken">Cancelled by <see cref="Stop"/>.</param>
-    /// <returns>A task whose result is whether it's now connected.</returns>
+    /// <returns>A task whose result is whether it's now connected; it's cancelled only if stopped.</returns>
     private async Task<bool> TryConnectAsync(CancellationToken cancellationToken)
     {
         try
         {
             return await connect(cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             return false;
-        }
-    }
-
-    /// <summary>Marks this run as over, unless a newer one has already replaced it.</summary>
-    /// <param name="cts">This run's cancellation source.</param>
-    private void Finish(CancellationTokenSource cts)
-    {
-        lock (gate)
-        {
-            if (ReferenceEquals(running, cts))
-            {
-                running = null;
-            }
         }
     }
 }

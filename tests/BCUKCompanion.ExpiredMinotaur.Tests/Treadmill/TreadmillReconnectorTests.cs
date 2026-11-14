@@ -84,6 +84,25 @@ public sealed class TreadmillReconnectorTests
     }
 
     [Fact]
+    public async Task AnAttemptThatTimesOut_IsRetriedLikeAnyOtherFailure()
+    {
+        outcomes.Enqueue(() => throw new TaskCanceledException("BLE connect timed out"));
+        outcomes.Enqueue(() => true);
+        using var reconnector = Create();
+        int reconnected = 0;
+        reconnector.Reconnected += (_, _) => reconnected++;
+
+        Task run = reconnector.Start(immediately: true);
+        await WaitUntilAsync(() => attempts == 1);
+        clock.Advance(TimeSpan.FromSeconds(10));
+        await run.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(2, attempts);
+        Assert.Equal(1, reconnected);
+        Assert.False(reconnector.IsRunning);
+    }
+
+    [Fact]
     public async Task ADropReportedDuringASuccessfulAttempt_ChecksTheConnectionAgain()
     {
         TreadmillReconnector? reconnector = null;
