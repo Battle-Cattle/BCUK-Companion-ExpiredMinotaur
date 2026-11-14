@@ -99,12 +99,11 @@ public sealed class TreadmillReconnector : IDisposable
             await RetryUntilConnectedAsync(immediately, cts.Token).ConfigureAwait(false);
 
             // A drop reported while that attempt ran may have come after it connected: check again at once.
-            while (ConsumeRestartRequest(cts))
+            while (ConsumeRestartRequestOrFinish(cts))
             {
                 await RetryUntilConnectedAsync(true, cts.Token).ConfigureAwait(false);
             }
 
-            Finish(cts);
             Reconnected?.Invoke(this, EventArgs.Empty);
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)
@@ -138,15 +137,25 @@ public sealed class TreadmillReconnector : IDisposable
         }
     }
 
-    /// <summary>Takes the "check again" flag a <see cref="Start"/> during this run set, if it's still the current run.</summary>
+    /// <summary>
+    /// Takes the "check again" flag a <see cref="Start"/> set during this run, or else marks this
+    /// run finished, in one step: a concurrent <see cref="Start"/> either sets the flag first or
+    /// starts a new run after.
+    /// </summary>
     /// <param name="cts">This run's cancellation source.</param>
-    /// <returns>True if this run must check the connection once more before finishing.</returns>
-    private bool ConsumeRestartRequest(CancellationTokenSource cts)
+    /// <returns>True if this run must check the connection once more; false if it has finished (or was replaced).</returns>
+    private bool ConsumeRestartRequestOrFinish(CancellationTokenSource cts)
     {
         lock (gate)
         {
-            if (!ReferenceEquals(running, cts) || !restartRequested)
+            if (!ReferenceEquals(running, cts))
             {
+                return false;
+            }
+
+            if (!restartRequested)
+            {
+                running = null;
                 return false;
             }
 

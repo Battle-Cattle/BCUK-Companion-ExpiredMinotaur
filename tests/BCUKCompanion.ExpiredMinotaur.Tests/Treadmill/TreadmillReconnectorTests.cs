@@ -112,6 +112,40 @@ public sealed class TreadmillReconnectorTests
         }
     }
 
+    [Fact]
+    public async Task AStartRacingTheEndOfASuccessfulRun_AlwaysGetsAnotherCheck()
+    {
+        // Whenever the second Start lands (during the attempt, as the run finishes, or after it),
+        // some attempt must begin after it. Racing them many times catches a gap between the
+        // run's last "check again?" and its finish, where a Start used to be lost.
+        for (int i = 0; i < 20000; i++)
+        {
+            int made = 0;
+            using var reconnector = new TreadmillReconnector(_ =>
+            {
+                Interlocked.Increment(ref made);
+                return Task.FromResult(true);
+            }, clock);
+            using var go = new ManualResetEventSlim();
+            Task race = Task.Run(() =>
+            {
+                go.Wait();
+                while (Volatile.Read(ref made) == 0)
+                {
+                }
+
+                int before = Volatile.Read(ref made);
+                return (before, reconnector.Start(immediately: true));
+            });
+
+            Task run = Task.Run(() => { go.Set(); return reconnector.Start(immediately: true); });
+            (int beforeSecond, Task second) = await ((Task<(int, Task)>)race);
+            await Task.WhenAll(run, second).WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.True(Volatile.Read(ref made) > beforeSecond, $"Iteration {i}: the second Start got no attempt after it.");
+        }
+    }
+
     private async Task WaitUntilAsync(Func<bool> condition)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
