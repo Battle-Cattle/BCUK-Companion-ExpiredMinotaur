@@ -375,7 +375,7 @@ public sealed class TreadmillClientTests : IDisposable
     [Fact]
     public async Task ConnectionChanged_SaysWhetherItConnectedWasDisconnectedOrDropped()
     {
-        var changes = new ConcurrentQueue<TreadmillConnectionChange>();
+        var changes = new ConcurrentQueue<TreadmillConnectionChanged>();
         client.ConnectionChanged += (_, change) => changes.Enqueue(change);
 
         await ConnectAsync();
@@ -385,8 +385,8 @@ public sealed class TreadmillClientTests : IDisposable
         devices[0].LoseConnection(); // Already replaced: no change.
 
         Assert.Equal(
-            [TreadmillConnectionChange.Connected, TreadmillConnectionChange.Disconnected,
-             TreadmillConnectionChange.Connected, TreadmillConnectionChange.Dropped],
+            [new(TreadmillConnectionChange.Connected, 1), new(TreadmillConnectionChange.Disconnected, 2),
+             new(TreadmillConnectionChange.Connected, 3), new TreadmillConnectionChanged(TreadmillConnectionChange.Dropped, 4)],
             changes);
     }
 

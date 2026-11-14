@@ -49,6 +49,9 @@ public sealed class TreadmillClient : IDisposable
 
     private ControlPointService? controlPointService;
 
+    // Numbers each connection change in the order it happened; only written under writeLock.
+    private long connectionSequence;
+
     /// <summary>
     /// Fires on whatever thread triggered it (a BLE callback thread, or the follow
     /// timer's thread-pool thread) — any WPF subscriber must marshal via Dispatcher.Invoke
@@ -58,10 +61,11 @@ public sealed class TreadmillClient : IDisposable
 
     /// <summary>
     /// Raised when the treadmill connects, is disconnected on request, or drops on its own
-    /// (powered off, out of range). Fires on whatever thread made the change; subscribers must not
-    /// call back into this client synchronously.
+    /// (powered off, out of range). Fires on whatever thread made the change, after the change has
+    /// released the client's lock, so two changes can be raised out of order: compare their
+    /// <see cref="TreadmillConnectionChanged.Sequence"/> and ignore one older than the last seen.
     /// </summary>
-    public event EventHandler<TreadmillConnectionChange>? ConnectionChanged;
+    public event EventHandler<TreadmillConnectionChanged>? ConnectionChanged;
 
     /// <summary>Whether a treadmill is connected and accepting commands.</summary>
     public bool IsConnected { get; private set; }
@@ -169,6 +173,7 @@ public sealed class TreadmillClient : IDisposable
 
             controlPointService = service;
             IsConnected = true;
+            long connectedSequence = ++connectionSequence;
 
             if (Volatile.Read(ref disposed) != 0)
             {
@@ -186,7 +191,7 @@ public sealed class TreadmillClient : IDisposable
             RaiseStatus(warnings.Count > 0
                 ? $"Connected. WARNING: {string.Join(" | ", warnings)}"
                 : "Connected.");
-            ConnectionChanged?.Invoke(this, TreadmillConnectionChange.Connected);
+            ConnectionChanged?.Invoke(this, new TreadmillConnectionChanged(TreadmillConnectionChange.Connected, connectedSequence));
             return true;
         }
         finally
@@ -240,6 +245,7 @@ public sealed class TreadmillClient : IDisposable
         // the lock, so we never dispose the FtmsDevice a concurrent write/connect is still
         // using, and never race a Connect that's about to declare itself connected. Async so
         // a WPF click handler awaiting this doesn't freeze the UI for that duration.
+        TreadmillConnectionChanged change;
         await writeLock.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -259,6 +265,8 @@ public sealed class TreadmillClient : IDisposable
             IsConnected = false;
             speed.OnDisconnected();
             devices.Replace();
+            change = new TreadmillConnectionChanged(
+                onlyDevice is null ? TreadmillConnectionChange.Disconnected : TreadmillConnectionChange.Dropped, ++connectionSequence);
         }
         finally
         {
@@ -267,7 +275,7 @@ public sealed class TreadmillClient : IDisposable
         }
 
         RaiseStatus(status);
-        ConnectionChanged?.Invoke(this, onlyDevice is null ? TreadmillConnectionChange.Disconnected : TreadmillConnectionChange.Dropped);
+        ConnectionChanged?.Invoke(this, change);
     }
 
     /// <summary>
@@ -456,3 +464,8 @@ public enum TreadmillConnectionChange
     /// <summary>It dropped on its own: the treadmill was powered off or went out of range.</summary>
     Dropped,
 }
+
+/// <summary>A change to a <see cref="TreadmillClient"/>'s connection.</summary>
+/// <param name="Change">How the connection changed.</param>
+/// <param name="Sequence">Increases with each change, in the order the changes happened; a handler can ignore one lower than the last it saw.</param>
+public readonly record struct TreadmillConnectionChanged(TreadmillConnectionChange Change, long Sequence);

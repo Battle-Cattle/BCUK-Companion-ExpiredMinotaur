@@ -14,6 +14,8 @@ public sealed class TreadmillAutoReconnect : IDisposable
 {
     private readonly TreadmillReconnector reconnector;
     private readonly string memoryFile;
+    private readonly object gate = new();
+    private long lastSequence;
 
     /// <summary>Creates the coordinator; call <see cref="Attach"/> to start following a client.</summary>
     /// <param name="reconnector">Retries the connection after a drop, or at launch.</param>
@@ -47,7 +49,7 @@ public sealed class TreadmillAutoReconnect : IDisposable
 
     /// <summary>Follows <paramref name="client"/>'s connection changes.</summary>
     /// <param name="client">The treadmill client to keep connected.</param>
-    public void Attach(TreadmillClient client) => client.ConnectionChanged += (_, change) => OnConnectionChanged(change);
+    public void Attach(TreadmillClient client) => client.ConnectionChanged += (_, e) => OnConnectionChanged(e.Change, e.Sequence);
 
     /// <summary>At launch, starts reconnecting at once if the treadmill was connected last time.</summary>
     public void StartAtLaunch()
@@ -58,9 +60,30 @@ public sealed class TreadmillAutoReconnect : IDisposable
         }
     }
 
-    /// <summary>Reacts to a connection change: remember it, and reconnect after a drop.</summary>
+    /// <summary>
+    /// Reacts to a connection change: remember it, and reconnect after a drop. A change older than
+    /// one already handled is ignored, so a drop reported late can't restart reconnecting after a
+    /// Disconnect click that happened after it.
+    /// </summary>
     /// <param name="change">How the connection changed.</param>
-    internal void OnConnectionChanged(TreadmillConnectionChange change)
+    /// <param name="sequence">The change's <see cref="TreadmillConnectionChanged.Sequence"/>.</param>
+    internal void OnConnectionChanged(TreadmillConnectionChange change, long sequence)
+    {
+        lock (gate)
+        {
+            if (sequence <= lastSequence)
+            {
+                return;
+            }
+
+            lastSequence = sequence;
+            Apply(change);
+        }
+    }
+
+    /// <summary>Remembers the change, and starts or stops reconnecting.</summary>
+    /// <param name="change">How the connection changed.</param>
+    private void Apply(TreadmillConnectionChange change)
     {
         switch (change)
         {

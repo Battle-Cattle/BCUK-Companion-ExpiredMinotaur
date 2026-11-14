@@ -10,6 +10,7 @@ public sealed class TreadmillAutoReconnectTests : IDisposable
     private readonly FakeTimeProvider clock = new();
     private readonly List<(string Title, string Text)> balloons = [];
     private int attempts;
+    private long sequence;
     private bool connectSucceeds = true;
 
     public void Dispose()
@@ -39,10 +40,10 @@ public sealed class TreadmillAutoReconnectTests : IDisposable
         var (auto, _) = Create();
         using (auto)
         {
-            auto.OnConnectionChanged(TreadmillConnectionChange.Connected);
+            auto.OnConnectionChanged(TreadmillConnectionChange.Connected, ++sequence);
             Assert.True(auto.WasConnected);
 
-            auto.OnConnectionChanged(TreadmillConnectionChange.Disconnected);
+            auto.OnConnectionChanged(TreadmillConnectionChange.Disconnected, ++sequence);
             Assert.False(auto.WasConnected);
         }
     }
@@ -53,16 +54,33 @@ public sealed class TreadmillAutoReconnectTests : IDisposable
         var (auto, reconnector) = Create();
         using (auto)
         {
-            auto.OnConnectionChanged(TreadmillConnectionChange.Connected);
-            auto.OnConnectionChanged(TreadmillConnectionChange.Dropped);
+            auto.OnConnectionChanged(TreadmillConnectionChange.Connected, ++sequence);
+            auto.OnConnectionChanged(TreadmillConnectionChange.Dropped, ++sequence);
 
             Assert.Equal("Treadmill disconnected", Assert.Single(balloons).Title);
             Assert.True(reconnector.IsRunning);
             Assert.True(auto.WasConnected);
 
             // Connecting by hand meanwhile stops the retries.
-            auto.OnConnectionChanged(TreadmillConnectionChange.Connected);
+            auto.OnConnectionChanged(TreadmillConnectionChange.Connected, ++sequence);
             Assert.False(reconnector.IsRunning);
+        }
+    }
+
+    [Fact]
+    public void ADropReportedAfterALaterDisconnect_IsIgnored()
+    {
+        var (auto, reconnector) = Create();
+        using (auto)
+        {
+            auto.OnConnectionChanged(TreadmillConnectionChange.Connected, 1);
+            // The drop (2) released the client's lock before a Disconnect click (3), but was raised after it.
+            auto.OnConnectionChanged(TreadmillConnectionChange.Disconnected, 3);
+            auto.OnConnectionChanged(TreadmillConnectionChange.Dropped, 2);
+
+            Assert.False(reconnector.IsRunning);
+            Assert.Empty(balloons);
+            Assert.False(auto.WasConnected);
         }
     }
 
@@ -88,7 +106,7 @@ public sealed class TreadmillAutoReconnectTests : IDisposable
             first.StartAtLaunch();
             Assert.Equal(0, attempts);
 
-            first.OnConnectionChanged(TreadmillConnectionChange.Connected);
+            first.OnConnectionChanged(TreadmillConnectionChange.Connected, ++sequence);
         }
 
         var (second, reconnector) = Create();
@@ -107,7 +125,7 @@ public sealed class TreadmillAutoReconnectTests : IDisposable
         var (auto, _) = Create();
         using (auto)
         {
-            auto.OnConnectionChanged(TreadmillConnectionChange.Connected);
+            auto.OnConnectionChanged(TreadmillConnectionChange.Connected, ++sequence);
 
             Assert.False(auto.WasConnected);
         }
