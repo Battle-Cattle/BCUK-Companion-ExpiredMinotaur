@@ -18,6 +18,11 @@ public enum WizDeviceType
 /// <param name="SupportsColor">Whether it can be set to an RGB colour.</param>
 /// <param name="SupportsColorTemperature">Whether it can be set to a white colour temperature.</param>
 /// <param name="SupportsDimming">Whether its brightness can be set.</param>
+/// <param name="MacAddress">
+/// Its MAC address, from discovery: unlike the IP address it doesn't change when the router hands
+/// out a new lease, so a device that stops answering at <paramref name="IpAddress"/> can be found
+/// again. Null for a device added by hand, or saved before this was recorded.
+/// </param>
 public sealed record WizDevice(
     Guid Id,
     string Name,
@@ -25,7 +30,8 @@ public sealed record WizDevice(
     WizDeviceType DeviceType,
     bool SupportsColor,
     bool SupportsColorTemperature,
-    bool SupportsDimming)
+    bool SupportsDimming,
+    string? MacAddress = null)
 {
     /// <summary>The device as shown in lists, e.g. "Desk lamp (192.168.1.20) - Light".</summary>
     /// <returns>The name, IP address and device type.</returns>

@@ -63,6 +63,9 @@ internal static class Program
         // always see the current instance, even one created after the window itself.
         CompanionClient? companionClient = null;
 
+        // Finds a WiZ device again by MAC address when it stops answering at its saved IP.
+        var relocator = new WizDeviceRelocator((window, ct) => wizClient.DiscoverAsync(window, ct), store);
+
         return new CompanionTrayAppOptions
         {
             DataFolderName = DataFolderName,
@@ -83,7 +86,7 @@ internal static class Program
                 return new EventActionDispatcher(
                     () => config.Mappings,
                     () => new CompositeEventActionContext(
-                        new WizActionContext(wizClient, config.Devices),
+                        new WizActionContext(wizClient, config.Devices, relocator),
                         new TreadmillActionContext(treadmillClient)));
             },
             AdditionalMenuItems = new[]
