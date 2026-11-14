@@ -17,6 +17,7 @@ public sealed class TreadmillReconnector : IDisposable
     private readonly TimeProvider timeProvider;
     private readonly object gate = new();
     private CancellationTokenSource? running;
+    private bool restartRequested;
 
     /// <summary>Creates a reconnector that tries <paramref name="connect"/> on <paramref name="timeProvider"/>'s clock.</summary>
     /// <param name="connect">Tries once to connect; true when connected (including when it already was).</param>
@@ -42,7 +43,11 @@ public sealed class TreadmillReconnector : IDisposable
         }
     }
 
-    /// <summary>Starts trying, unless it already is.</summary>
+    /// <summary>
+    /// Starts trying. If it already is, the running attempts carry on, but one that succeeds then
+    /// checks the connection once more, because the drop this call reports may have happened
+    /// after that attempt connected.
+    /// </summary>
     /// <param name="immediately">True to make the first attempt now (at launch); false to wait <see cref="FirstDelay"/> first (after a drop).</param>
     /// <returns>A task that completes when it stops: connected, stopped, or already running (completes at once).</returns>
     public Task Start(bool immediately = false)
@@ -52,9 +57,11 @@ public sealed class TreadmillReconnector : IDisposable
         {
             if (running is not null)
             {
+                restartRequested = true;
                 return Task.CompletedTask;
             }
 
+            restartRequested = false;
             cts = running = new CancellationTokenSource();
         }
 
@@ -68,6 +75,7 @@ public sealed class TreadmillReconnector : IDisposable
         {
             running?.Cancel();
             running = null;
+            restartRequested = false;
         }
     }
 
@@ -88,20 +96,16 @@ public sealed class TreadmillReconnector : IDisposable
     {
         try
         {
-            for (int attempt = 0; ; attempt++)
-            {
-                if (!(immediately && attempt == 0))
-                {
-                    await Task.Delay(DelayBefore(attempt), timeProvider, cts.Token).ConfigureAwait(false);
-                }
+            await RetryUntilConnectedAsync(immediately, cts.Token).ConfigureAwait(false);
 
-                if (await TryConnectAsync(cts.Token).ConfigureAwait(false))
-                {
-                    Finish(cts);
-                    Reconnected?.Invoke(this, EventArgs.Empty);
-                    return;
-                }
+            // A drop reported while that attempt ran may have come after it connected: check again at once.
+            while (ConsumeRestartRequest(cts))
+            {
+                await RetryUntilConnectedAsync(true, cts.Token).ConfigureAwait(false);
             }
+
+            Finish(cts);
+            Reconnected?.Invoke(this, EventArgs.Empty);
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
@@ -111,6 +115,43 @@ public sealed class TreadmillReconnector : IDisposable
         {
             Finish(cts);
             cts.Dispose();
+        }
+    }
+
+    /// <summary>Makes attempts, waiting longer between each, until one connects.</summary>
+    /// <param name="immediately">Whether to skip the wait before the first attempt.</param>
+    /// <param name="cancellationToken">Cancelled by <see cref="Stop"/>.</param>
+    /// <returns>A task that completes once connected; it's cancelled if stopped first.</returns>
+    private async Task RetryUntilConnectedAsync(bool immediately, CancellationToken cancellationToken)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            if (!(immediately && attempt == 0))
+            {
+                await Task.Delay(DelayBefore(attempt), timeProvider, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (await TryConnectAsync(cancellationToken).ConfigureAwait(false))
+            {
+                return;
+            }
+        }
+    }
+
+    /// <summary>Takes the "check again" flag a <see cref="Start"/> during this run set, if it's still the current run.</summary>
+    /// <param name="cts">This run's cancellation source.</param>
+    /// <returns>True if this run must check the connection once more before finishing.</returns>
+    private bool ConsumeRestartRequest(CancellationTokenSource cts)
+    {
+        lock (gate)
+        {
+            if (!ReferenceEquals(running, cts) || !restartRequested)
+            {
+                return false;
+            }
+
+            restartRequested = false;
+            return true;
         }
     }
 

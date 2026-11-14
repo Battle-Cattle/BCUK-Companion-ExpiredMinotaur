@@ -92,6 +92,24 @@ public sealed class ActionsConfigStoreTests : IDisposable
     }
 
     [Fact]
+    public void Load_WizDeviceSavedBeforeMacsWereRecorded_LoadsWithNoMac()
+    {
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(store.ConfigFilePath, """
+            {
+              "Devices": [{ "Id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff", "Name": "Desk", "IpAddress": "192.168.1.20",
+                            "DeviceType": 0, "SupportsColor": true, "SupportsColorTemperature": false, "SupportsDimming": true }],
+              "Mappings": []
+            }
+            """);
+
+        var device = Assert.Single(store.Load().Devices);
+
+        Assert.Equal(new WizDevice(DeviceId, "Desk", "192.168.1.20", WizDeviceType.Light, true, false, true), device);
+        Assert.Null(device.MacAddress);
+    }
+
+    [Fact]
     public void Load_IgnoresLeftoverPreConsolidationFiles()
     {
         Directory.CreateDirectory(directory);

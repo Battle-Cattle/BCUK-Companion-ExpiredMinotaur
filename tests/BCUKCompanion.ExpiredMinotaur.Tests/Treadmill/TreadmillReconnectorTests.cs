@@ -83,6 +83,35 @@ public sealed class TreadmillReconnectorTests
         Assert.False(reconnector.IsRunning);
     }
 
+    [Fact]
+    public async Task ADropReportedDuringASuccessfulAttempt_ChecksTheConnectionAgain()
+    {
+        TreadmillReconnector? reconnector = null;
+        bool stillConnected = false;
+        reconnector = new TreadmillReconnector(_ =>
+        {
+            attempts++;
+            if (attempts == 1)
+            {
+                // The attempt connects, then the treadmill drops before it returns.
+                reconnector!.Start();
+                return Task.FromResult(true);
+            }
+
+            stillConnected = true;
+            return Task.FromResult(true);
+        }, clock);
+        using (reconnector)
+        {
+            Task run = reconnector.Start(immediately: true);
+            await run.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Equal(2, attempts);
+            Assert.True(stillConnected);
+            Assert.False(reconnector.IsRunning);
+        }
+    }
+
     private async Task WaitUntilAsync(Func<bool> condition)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
