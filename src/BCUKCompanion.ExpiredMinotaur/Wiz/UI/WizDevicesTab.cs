@@ -146,11 +146,19 @@ public sealed class WizDevicesTab : DockPanel
         host.ShowStatus(WizDeviceList.RemovedMessage(removedActionCount));
     }
 
-    /// <summary>Adds the devices picked in the LAN discovery dialog.</summary>
+    /// <summary>Adds the devices picked in the LAN discovery dialog, and fills in the MAC address of known devices that answered.</summary>
     private void OnDiscoverDevices()
     {
         var dialog = new WizDiscoverDevicesDialog(wizClient, devices.Select(d => d.IpAddress).ToList()) { Owner = Window.GetWindow(this) };
-        if (ShowDialogWindow(dialog) != true)
+        bool added = ShowDialogWindow(dialog) == true;
+
+        // Devices saved before MAC addresses were recorded pick theirs up from any scan.
+        foreach (var (index, device) in WizDeviceList.WithDiscoveredMacs(devices, dialog.Replies))
+        {
+            devices[index] = device;
+        }
+
+        if (!added)
         {
             return;
         }

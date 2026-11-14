@@ -10,7 +10,8 @@ namespace BCUKCompanion.ExpiredMinotaur.Wiz;
 /// <summary>A device that answered discovery.</summary>
 /// <param name="IpAddress">The address it replied from.</param>
 /// <param name="ModuleName">Its reported module name, which identifies the model (and so its capabilities).</param>
-public sealed record WizDiscoveredDevice(string IpAddress, string ModuleName);
+/// <param name="MacAddress">Its reported MAC address, which stays the same when its IP address changes; null when the reply had none.</param>
+public sealed record WizDiscoveredDevice(string IpAddress, string ModuleName, string? MacAddress = null);
 
 /// <summary>A device's state from <c>getPilot</c>; each field is null when the reply omits it.</summary>
 /// <param name="State">
@@ -211,25 +212,39 @@ public sealed class WizClient
                 continue;
             }
 
-            string? moduleName = null;
-            try
+            if (ParseDiscoveryReply(ipAddress, received.Buffer) is { } device)
             {
-                using var doc = JsonDocument.Parse(received.Buffer);
-                if (doc.RootElement.TryGetProperty("result", out var result)
-                    && result.TryGetProperty("moduleName", out var moduleNameEl))
-                {
-                    moduleName = moduleNameEl.GetString();
-                }
+                yield return device;
             }
-            catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
+        }
+    }
+
+    /// <summary>Reads a device's reply to <c>getSystemConfig</c>.</summary>
+    /// <param name="ipAddress">The address the reply came from.</param>
+    /// <param name="reply">The reply's bytes.</param>
+    /// <returns>The device, with its MAC address when the reply has one; null when the reply isn't JSON or has no module name.</returns>
+    internal static WizDiscoveredDevice? ParseDiscoveryReply(string ipAddress, byte[] reply)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(reply);
+            if (!doc.RootElement.TryGetProperty("result", out var result)
+                || !result.TryGetProperty("moduleName", out var moduleNameEl)
+                || moduleNameEl.GetString() is not { } moduleName)
             {
-                continue;
+                return null;
             }
 
-            if (moduleName is not null)
-            {
-                yield return new WizDiscoveredDevice(ipAddress, moduleName);
-            }
+            // A blank or separator-only "mac" counts as none, so it can never match another device's.
+            string? mac = result.TryGetProperty("mac", out var macEl) && macEl.ValueKind == JsonValueKind.String
+                && WizDeviceList.NormalizeMac(macEl.GetString()) is { Length: > 0 }
+                ? macEl.GetString()
+                : null;
+            return new WizDiscoveredDevice(ipAddress, moduleName, mac);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
+        {
+            return null;
         }
     }
 

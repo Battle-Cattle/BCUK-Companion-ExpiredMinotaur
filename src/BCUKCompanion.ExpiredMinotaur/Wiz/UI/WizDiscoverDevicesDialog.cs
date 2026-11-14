@@ -31,10 +31,14 @@ public sealed class WizDiscoverDevicesDialog : Window
     private readonly ListBox resultsList = new() { Margin = new Thickness(0, 0, 0, 8), MinHeight = 160 };
     private readonly TextBlock statusText = new() { Margin = new Thickness(0, 0, 0, 8) };
     private readonly List<DiscoveredItem> items = [];
+    private readonly List<WizDiscoveredDevice> replies = [];
     private bool isScanning;
 
     /// <summary>The devices the user chose to add, once the dialog closes with OK.</summary>
     public IReadOnlyList<WizDevice> AddedDevices { get; private set; } = [];
+
+    /// <summary>Every device that answered the last scan, already-known ones included, however the dialog was closed.</summary>
+    public IReadOnlyList<WizDiscoveredDevice> Replies => replies;
 
     /// <summary>Creates the dialog; discovery starts as soon as it loads.</summary>
     /// <param name="client">The client to discover devices with.</param>
@@ -100,8 +104,10 @@ public sealed class WizDiscoverDevicesDialog : Window
         try
         {
             var found = new List<DiscoveredItem>();
+            replies.Clear();
             await foreach (var device in client.DiscoverAsync())
             {
+                replies.Add(device);
                 if (!knownIpAddresses.Contains(device.IpAddress))
                 {
                     found.Add(new DiscoveredItem(device));

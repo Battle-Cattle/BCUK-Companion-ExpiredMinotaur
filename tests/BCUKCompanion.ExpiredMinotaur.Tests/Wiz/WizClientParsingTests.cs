@@ -46,4 +46,29 @@ public sealed class WizClientParsingTests
     {
         Assert.Null(WizClient.ParsePilotStatus(response));
     }
+
+    [Fact]
+    public void ParseDiscoveryReply_ReadsTheModuleNameAndMacAddress()
+    {
+        var device = WizClient.ParseDiscoveryReply(
+            "192.168.1.20", System.Text.Encoding.UTF8.GetBytes("""{"result":{"mac":"a8bb50112233","moduleName":"ESP25_SHRGB_01"}}"""));
+
+        Assert.Equal(new WizDiscoveredDevice("192.168.1.20", "ESP25_SHRGB_01", "a8bb50112233"), device);
+    }
+
+    [Theory]
+    [InlineData("""{"result":{"moduleName":"ESP25_SHRGB_01"}}""", "ESP25_SHRGB_01")]
+    [InlineData("""{"result":{"moduleName":"ESP25_SHRGB_01","mac":42}}""", "ESP25_SHRGB_01")]
+    [InlineData("""{"result":{"moduleName":"ESP25_SHRGB_01","mac":""}}""", "ESP25_SHRGB_01")]
+    [InlineData("""{"result":{"moduleName":"ESP25_SHRGB_01","mac":"--"}}""", "ESP25_SHRGB_01")]
+    [InlineData("""{"result":{"mac":"a8bb50112233"}}""", null)]
+    [InlineData("""{"error":{}}""", null)]
+    [InlineData("not json", null)]
+    public void ParseDiscoveryReply_WithoutAUsableMacOrModule(string reply, string? module)
+    {
+        var device = WizClient.ParseDiscoveryReply("192.168.1.20", System.Text.Encoding.UTF8.GetBytes(reply));
+
+        Assert.Equal(module, device?.ModuleName);
+        Assert.Null(device?.MacAddress);
+    }
 }
