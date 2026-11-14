@@ -457,6 +457,38 @@ public sealed class TreadmillClientTests : IDisposable
     }
 
     [Fact]
+    public async Task AutoReconnect_IgnoresADropDeliveredAfterALaterDisconnect()
+    {
+        string memoryFile = Path.Combine(Path.GetTempPath(), $"bcuk-treadmill-{Guid.NewGuid():N}");
+        var reconnector = new BCUKCompanion.ExpiredMinotaur.Treadmill.TreadmillReconnector(_ => Task.FromResult(false), new FakeTimeProvider());
+        using var auto = new BCUKCompanion.ExpiredMinotaur.Treadmill.TreadmillAutoReconnect(reconnector, memoryFile);
+
+        // Subscribed before the auto-reconnect, so it runs first: on the drop it disconnects by hand,
+        // which delivers Disconnected to the auto-reconnect before the drop itself reaches it.
+        client.ConnectionChanged += (_, e) =>
+        {
+            if (e.Change == TreadmillConnectionChange.Dropped)
+            {
+                Assert.True(client.DisconnectAsync().Wait(TimeSpan.FromSeconds(5)));
+            }
+        };
+        auto.Attach(client);
+        try
+        {
+            await ConnectAsync();
+
+            devices[0].LoseConnection();
+
+            Assert.False(reconnector.IsRunning);
+            Assert.False(auto.WasConnected);
+        }
+        finally
+        {
+            File.Delete(memoryFile);
+        }
+    }
+
+    [Fact]
     public async Task UnreadableTreadmillData_IsReported()
     {
         await ConnectAsync();
