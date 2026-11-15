@@ -159,4 +159,44 @@ public sealed class WizDeviceListTests
         Assert.Contains("'Lamp'", message);
         Assert.Contains("192.168.1.45", message);
     }
+
+    [Fact]
+    public void EditTarget_KeepsAMoveMadeWhileTheDialogWasOpen()
+    {
+        var id = Guid.NewGuid();
+        var opened = Device("192.168.1.20", id);
+        var devices = new List<WizDevice> { Device("192.168.1.30"), opened with { IpAddress = "192.168.1.45" } };
+        var edited = opened with { Name = "Desk lamp" };
+
+        Assert.Equal((1, edited with { IpAddress = "192.168.1.45" }), WizDeviceList.EditTarget(devices, opened, edited));
+    }
+
+    [Fact]
+    public void EditTarget_UsesAnAddressTheUserTypedOverAMove()
+    {
+        var id = Guid.NewGuid();
+        var opened = Device("192.168.1.20", id);
+        var devices = new List<WizDevice> { opened with { IpAddress = "192.168.1.45" } };
+        var edited = opened with { IpAddress = "192.168.1.50" };
+
+        Assert.Equal((0, edited), WizDeviceList.EditTarget(devices, opened, edited));
+    }
+
+    [Fact]
+    public void EditTarget_ADeviceNoLongerInTheList_IsNull()
+    {
+        var opened = Device("192.168.1.20");
+
+        Assert.Null(WizDeviceList.EditTarget(new List<WizDevice> { Device("192.168.1.30") }, opened, opened));
+    }
+
+    [Fact]
+    public void IndexOf_FindsByIdOrReturnsMinusOne()
+    {
+        var id = Guid.NewGuid();
+        var devices = new List<WizDevice> { Device("192.168.1.30"), Device("192.168.1.20", id) };
+
+        Assert.Equal(1, WizDeviceList.IndexOf(devices, id));
+        Assert.Equal(-1, WizDeviceList.IndexOf(devices, Guid.NewGuid()));
+    }
 }

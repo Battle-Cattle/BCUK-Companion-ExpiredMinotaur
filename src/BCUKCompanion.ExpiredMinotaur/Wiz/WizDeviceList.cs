@@ -75,6 +75,47 @@ internal static class WizDeviceList
         return null;
     }
 
+    /// <summary>The status line when an edited device was removed from the list while its dialog was open.</summary>
+    public const string EditedDeviceGoneMessage = "That device is no longer in the list.";
+
+    /// <summary>
+    /// Where an edit from the Edit Device dialog goes, and what it stores. The device may have been
+    /// found at a new address while the dialog was open, so it's looked up by id, and an address the
+    /// user didn't change in the dialog gives way to the one it has now.
+    /// </summary>
+    /// <param name="devices">The window's current device list.</param>
+    /// <param name="opened">The device as it was when the dialog opened.</param>
+    /// <param name="edited">The dialog's result.</param>
+    /// <returns>The device's current index and the entry to store there; or null when it's no longer in the list.</returns>
+    public static (int Index, WizDevice Device)? EditTarget(IList<WizDevice> devices, WizDevice opened, WizDevice edited)
+    {
+        var index = IndexOf(devices, edited.Id);
+        if (index < 0)
+        {
+            return null;
+        }
+
+        var addressEdited = !SameAddress(edited.IpAddress, opened.IpAddress);
+        return (index, addressEdited ? edited : edited with { IpAddress = devices[index].IpAddress });
+    }
+
+    /// <summary>The position of the device with <paramref name="id"/>.</summary>
+    /// <param name="devices">The device list to search.</param>
+    /// <param name="id">The device's <see cref="WizDevice.Id"/>.</param>
+    /// <returns>Its index, or -1 when it isn't in the list.</returns>
+    public static int IndexOf(IList<WizDevice> devices, Guid id)
+    {
+        for (var i = 0; i < devices.Count; i++)
+        {
+            if (devices[i].Id == id)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
     /// <summary>The status line after a device in the open window was found at a new address.</summary>
     /// <param name="device">The device at its new address.</param>
     /// <returns>A message naming the device and its new address.</returns>
