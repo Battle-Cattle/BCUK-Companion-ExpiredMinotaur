@@ -3,6 +3,12 @@ using System.IO;
 
 namespace BCUKCompanion.ExpiredMinotaur.Wiz;
 
+/// <summary>A WiZ device found again at a new IP address.</summary>
+/// <param name="DeviceId">The saved device's <see cref="WizDevice.Id"/>.</param>
+/// <param name="OldIpAddress">The address it no longer answered at.</param>
+/// <param name="NewIpAddress">The address it answered from, now saved.</param>
+public sealed record WizDeviceRelocated(Guid DeviceId, string OldIpAddress, string NewIpAddress);
+
 /// <summary>
 /// Finds a WiZ device again after its IP address changed (a new DHCP lease, a router reboot):
 /// runs a short discovery, looks for the device's MAC address, and saves the new address to
@@ -15,6 +21,12 @@ public sealed class WizDeviceRelocator
 
     private readonly Func<TimeSpan, CancellationToken, IAsyncEnumerable<WizDiscoveredDevice>> discover;
     private readonly ActionsConfigStore store;
+
+    /// <summary>
+    /// Raised after a device is found at a new address and saved, on whichever thread ran the
+    /// action, so an open Actions window can show (and keep) the new address.
+    /// </summary>
+    public event EventHandler<WizDeviceRelocated>? Relocated;
 
     /// <summary>Creates a relocator that discovers with <paramref name="discover"/> and saves to <paramref name="store"/>.</summary>
     /// <param name="discover">Runs discovery for the given window, yielding each device that answers (normally <see cref="WizClient.DiscoverAsync"/>).</param>
@@ -30,8 +42,9 @@ public sealed class WizDeviceRelocator
     /// <param name="device">The device that didn't answer at its saved address.</param>
     /// <param name="cancellationToken">Ends the search early.</param>
     /// <returns>
-    /// A task whose result is the device at its new address, already saved; or null when it has no
-    /// MAC address, wasn't found, or answered from the address it already had.
+    /// A task whose result is the device at its new address, already saved and reported through
+    /// <see cref="Relocated"/>; or null when it has no MAC address, wasn't found, or answered from
+    /// the address it already had.
     /// </returns>
     public async Task<WizDevice?> RelocateAsync(WizDevice device, CancellationToken cancellationToken)
     {
@@ -44,6 +57,7 @@ public sealed class WizDeviceRelocator
 
         var moved = device with { IpAddress = address };
         Save(moved);
+        Relocated?.Invoke(this, new WizDeviceRelocated(device.Id, device.IpAddress, address));
         return moved;
     }
 

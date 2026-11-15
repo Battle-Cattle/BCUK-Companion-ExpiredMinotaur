@@ -57,6 +57,34 @@ public sealed class WizDeviceRelocatorTests : IDisposable
     }
 
     [Fact]
+    public async Task AMove_IsReportedWithTheOldAndNewAddress()
+    {
+        var device = SavedDevice("192.168.1.20");
+        answering.Add(new WizDiscoveredDevice("192.168.1.45", "ESP25_SHRGB_01", Mac));
+        var relocator = Relocator();
+        var reported = new List<WizDeviceRelocated>();
+        relocator.Relocated += (_, e) => reported.Add(e);
+
+        await relocator.RelocateAsync(device, CancellationToken.None);
+
+        Assert.Equal([new WizDeviceRelocated(device.Id, "192.168.1.20", "192.168.1.45")], reported);
+    }
+
+    [Fact]
+    public async Task NoMove_IsNotReported()
+    {
+        var device = SavedDevice("192.168.1.20");
+        answering.Add(new WizDiscoveredDevice("192.168.1.20", "ESP25_SHRGB_01", Mac));
+        var relocator = Relocator();
+        var reported = 0;
+        relocator.Relocated += (_, _) => reported++;
+
+        await relocator.RelocateAsync(device, CancellationToken.None);
+
+        Assert.Equal(0, reported);
+    }
+
+    [Fact]
     public async Task ADeviceWithoutAMac_IsNotLookedFor()
     {
         var device = SavedDevice("192.168.1.20", mac: null);
