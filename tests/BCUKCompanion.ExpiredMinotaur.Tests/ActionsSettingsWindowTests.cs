@@ -183,4 +183,24 @@ public sealed class ActionsSettingsWindowTests
         });
         treadmill.Client.Dispose();
     }
+
+    [SkippableFact]
+    public void AMoveThatDoesntApply_LeavesTheListAndStatusAlone()
+    {
+        WindowsOnly.Skip();
+        using var temp = new TempActionsStore();
+        temp.Store.Save(new ActionsConfig { Devices = [Desk] });
+        var treadmill = new FakeTreadmill();
+        WpfTest.Run(() =>
+        {
+            var window = new ActionsSettingsWindow(temp.Store, new WizClient(), treadmill.Client);
+
+            // The window still has Desk at .20, so a move reported from another address doesn't apply.
+            window.OnDeviceRelocated(new WizDeviceRelocated(Desk.Id, "192.168.1.77", "192.168.1.45"));
+
+            Assert.DoesNotContain(WpfTest.Texts(window), t => t.Contains("192.168.1.45"));
+            Assert.Equal([Desk], ((ActionsConfig)CallProtected(window, "BuildConfig")!).Devices);
+        });
+        treadmill.Client.Dispose();
+    }
 }
