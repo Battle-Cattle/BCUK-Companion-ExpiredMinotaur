@@ -131,4 +131,76 @@ public sealed class ActionsSettingsWindowTests
         });
         treadmill.Client.Dispose();
     }
+
+    [SkippableFact]
+    public void ADeviceThatMovesWhileOpen_ShowsItsNewAddress_AndSaveKeepsIt()
+    {
+        WindowsOnly.Skip();
+        using var temp = new TempActionsStore();
+        var mac = Desk with { MacAddress = "a8bb50112233" };
+        temp.Store.Save(new ActionsConfig { Devices = [mac] });
+        var treadmill = new FakeTreadmill();
+        var relocator = new WizDeviceRelocator(
+            (_, _) => new[] { new WizDiscoveredDevice("192.168.1.45", "ESP25_SHRGB_01", "a8bb50112233") }.ToAsyncEnumerable(),
+            temp.Store);
+        WpfTest.Run(async () =>
+        {
+            var window = new ActionsSettingsWindow(temp.Store, new WizClient(), treadmill.Client, relocator: relocator);
+
+            // An action outside the window finds the device at its new address.
+            await Task.Run(() => relocator.RelocateAsync(mac, CancellationToken.None));
+            await WpfTest.WaitUntil(() => WpfTest.Texts(window).Any(t => t.Contains("192.168.1.45")));
+
+            WpfTest.Click(window, "Save");
+            await WpfTest.WaitUntil(() => WpfTest.Texts(window).Any(t => t.StartsWith("Saved to")));
+        });
+
+        Assert.Equal("192.168.1.45", Assert.Single(temp.Store.Load().Devices).IpAddress);
+        treadmill.Client.Dispose();
+    }
+
+    [SkippableFact]
+    public void AfterClosing_AMoveNoLongerReachesTheWindow()
+    {
+        WindowsOnly.Skip();
+        using var temp = new TempActionsStore();
+        var mac = Desk with { MacAddress = "a8bb50112233" };
+        temp.Store.Save(new ActionsConfig { Devices = [mac] });
+        var treadmill = new FakeTreadmill();
+        var relocator = new WizDeviceRelocator(
+            (_, _) => new[] { new WizDiscoveredDevice("192.168.1.45", "ESP25_SHRGB_01", "a8bb50112233") }.ToAsyncEnumerable(),
+            temp.Store);
+        WpfTest.Run(async () =>
+        {
+            var window = new ActionsSettingsWindow(temp.Store, new WizClient(), treadmill.Client, relocator: relocator) { ShowActivated = false };
+            window.Show();
+            window.Close();
+
+            await relocator.RelocateAsync(mac, CancellationToken.None);
+            await Task.Delay(100);
+
+            Assert.DoesNotContain(WpfTest.Texts(window), t => t.Contains("192.168.1.45"));
+        });
+        treadmill.Client.Dispose();
+    }
+
+    [SkippableFact]
+    public void AMoveThatDoesntApply_LeavesTheListAndStatusAlone()
+    {
+        WindowsOnly.Skip();
+        using var temp = new TempActionsStore();
+        temp.Store.Save(new ActionsConfig { Devices = [Desk] });
+        var treadmill = new FakeTreadmill();
+        WpfTest.Run(() =>
+        {
+            var window = new ActionsSettingsWindow(temp.Store, new WizClient(), treadmill.Client);
+
+            // The window still has Desk at .20, so a move reported from another address doesn't apply.
+            window.OnDeviceRelocated(new WizDeviceRelocated(Desk.Id, "192.168.1.77", "192.168.1.45"));
+
+            Assert.DoesNotContain(WpfTest.Texts(window), t => t.Contains("192.168.1.45"));
+            Assert.Equal([Desk], ((ActionsConfig)CallProtected(window, "BuildConfig")!).Devices);
+        });
+        treadmill.Client.Dispose();
+    }
 }

@@ -109,7 +109,7 @@ internal static class Program
             AdditionalMenuItems = new[]
             {
                 SingletonWindowMenuItem.Create("Actions...",
-                    () => new ActionsSettingsWindow(store, wizClient, treadmillClient, () => companionClient)),
+                    () => new ActionsSettingsWindow(store, wizClient, treadmillClient, () => companionClient, relocator)),
             },
         };
     }

@@ -45,6 +45,83 @@ internal static class WizDeviceList
             ? left.Equals(right)
             : string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// The device list entry to update for a device found at a new address, so a window opened
+    /// before the move shows (and later saves) the new address rather than the old one.
+    /// </summary>
+    /// <param name="devices">The window's device list, possibly with unsaved edits.</param>
+    /// <param name="relocated">The device that moved, and its old and new addresses.</param>
+    /// <returns>
+    /// The entry's index and the entry with the new address (other unsaved edits kept); or null when
+    /// the device isn't in the list, the user has already changed its address, or another device
+    /// already uses the new one.
+    /// </returns>
+    public static (int Index, WizDevice Device)? WithRelocation(IList<WizDevice> devices, WizDeviceRelocated relocated)
+    {
+        for (var i = 0; i < devices.Count; i++)
+        {
+            var device = devices[i];
+            if (device.Id != relocated.DeviceId)
+            {
+                continue;
+            }
+
+            return SameAddress(device.IpAddress, relocated.OldIpAddress)
+                && !IsDuplicateIp(devices, relocated.NewIpAddress, exceptId: device.Id)
+                ? (i, device with { IpAddress = relocated.NewIpAddress })
+                : null;
+        }
+
+        return null;
+    }
+
+    /// <summary>The status line when an edited device was removed from the list while its dialog was open.</summary>
+    public const string EditedDeviceGoneMessage = "That device is no longer in the list.";
+
+    /// <summary>
+    /// Where an edit from the Edit Device dialog goes, and what it stores. The device may have been
+    /// found at a new address while the dialog was open, so it's looked up by id, and an address the
+    /// user didn't change in the dialog gives way to the one it has now.
+    /// </summary>
+    /// <param name="devices">The window's current device list.</param>
+    /// <param name="opened">The device as it was when the dialog opened.</param>
+    /// <param name="edited">The dialog's result.</param>
+    /// <returns>The device's current index and the entry to store there; or null when it's no longer in the list.</returns>
+    public static (int Index, WizDevice Device)? EditTarget(IList<WizDevice> devices, WizDevice opened, WizDevice edited)
+    {
+        var index = IndexOf(devices, edited.Id);
+        if (index < 0)
+        {
+            return null;
+        }
+
+        var addressEdited = !SameAddress(edited.IpAddress, opened.IpAddress);
+        return (index, addressEdited ? edited : edited with { IpAddress = devices[index].IpAddress });
+    }
+
+    /// <summary>The position of the device with <paramref name="id"/>.</summary>
+    /// <param name="devices">The device list to search.</param>
+    /// <param name="id">The device's <see cref="WizDevice.Id"/>.</param>
+    /// <returns>Its index, or -1 when it isn't in the list.</returns>
+    public static int IndexOf(IList<WizDevice> devices, Guid id)
+    {
+        for (var i = 0; i < devices.Count; i++)
+        {
+            if (devices[i].Id == id)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>The status line after a device in the open window was found at a new address.</summary>
+    /// <param name="device">The device at its new address.</param>
+    /// <returns>A message naming the device and its new address.</returns>
+    public static string RelocatedMessage(WizDevice device) =>
+        $"'{device.Name}' stopped answering at its old address and was found at {device.IpAddress}.";
+
     /// <summary>Whether two MAC addresses are the same, ignoring case and any ':' or '-' separators.</summary>
     /// <param name="a">One MAC address, or null.</param>
     /// <param name="b">The other MAC address, or null.</param>

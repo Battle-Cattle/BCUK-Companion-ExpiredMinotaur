@@ -264,4 +264,75 @@ public sealed class WizDevicesTabTests
             Assert.Equal(2, rig.Devices.Count);
         });
     }
+
+    [SkippableFact]
+    public void Edit_WhileTheDeviceMoves_KeepsItsNewAddress()
+    {
+        WindowsOnly.Skip();
+        WpfTest.Run(() =>
+        {
+            var rig = new Rig();
+            rig.List.SelectedItem = Desk;
+            rig.OnDialog(dialog =>
+            {
+                // The device is found at a new address while the dialog is open.
+                rig.Devices[0] = Desk with { IpAddress = "192.168.1.45" };
+                Fill(dialog, "Desk lamp", Desk.IpAddress);
+            });
+
+            rig.Click("Edit");
+
+            Assert.Equal("Desk lamp", rig.Devices[0].Name);
+            Assert.Equal("192.168.1.45", rig.Devices[0].IpAddress);
+            Assert.Equal(2, rig.Devices.Count);
+        });
+    }
+
+    [SkippableFact]
+    public void Edit_OfADeviceRemovedMeanwhile_SaysSoAndChangesNothing()
+    {
+        WindowsOnly.Skip();
+        WpfTest.Run(() =>
+        {
+            var rig = new Rig();
+            rig.List.SelectedItem = Desk;
+            rig.OnDialog(dialog =>
+            {
+                rig.Devices.RemoveAt(0);
+                Fill(dialog, "Desk lamp", Desk.IpAddress);
+            });
+
+            rig.Click("Edit");
+
+            Assert.Equal([Fan], rig.Devices);
+            Assert.Equal([WizDeviceList.EditedDeviceGoneMessage], rig.Statuses);
+        });
+    }
+
+    [SkippableFact]
+    public void Discover_SkipsAPickWhoseAddressADeviceTookMeanwhile()
+    {
+        WindowsOnly.Skip();
+        using var fake = new FakeWizDevice((_, _) => """{"result":{"moduleName":"ESP25_SHRGB_01"}}""");
+        WpfTest.Run(() =>
+        {
+            var rig = new Rig(fake.CreateClient());
+            rig.Tab.ShowDialogWindow = window => WpfTest.ShowDialog(window, async dialog =>
+            {
+                var list = WpfTest.All<ListBox>(dialog).Single();
+                await WpfTest.WaitUntil(() => list.Items.Count > 0);
+
+                // Desk is found at the discovered address while the dialog is open.
+                rig.Devices[0] = Desk with { IpAddress = IPAddress.Loopback.ToString() };
+                list.SelectAll();
+                WpfTest.Click(dialog, "Add Selected");
+            });
+
+            rig.Click("Discover...");
+
+            Assert.Equal(2, rig.Devices.Count);
+            Assert.Single(rig.Devices, d => d.IpAddress == IPAddress.Loopback.ToString());
+            Assert.Equal([WizDeviceList.DuplicateIpMessage], rig.Statuses);
+        });
+    }
 }

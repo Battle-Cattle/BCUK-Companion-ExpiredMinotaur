@@ -112,4 +112,91 @@ public sealed class WizDeviceListTests
         Assert.Equal(0, index);
         Assert.Equal(devices[0] with { MacAddress = "a8bb50000020" }, device);
     }
+
+    [Fact]
+    public void WithRelocation_MovesTheDevice_KeepingOtherUnsavedEdits()
+    {
+        var id = Guid.NewGuid();
+        var renamed = Device("192.168.1.20", id) with { Name = "Desk (renamed, unsaved)" };
+        var devices = new List<WizDevice> { Device("192.168.1.30"), renamed };
+
+        var result = WizDeviceList.WithRelocation(devices, new WizDeviceRelocated(id, "192.168.1.20", "192.168.1.45"));
+
+        Assert.Equal((1, renamed with { IpAddress = "192.168.1.45" }), result);
+    }
+
+    [Fact]
+    public void WithRelocation_LeavesAnAddressTheUserAlreadyChanged()
+    {
+        var id = Guid.NewGuid();
+        var devices = new List<WizDevice> { Device("192.168.1.77", id) };
+
+        Assert.Null(WizDeviceList.WithRelocation(devices, new WizDeviceRelocated(id, "192.168.1.20", "192.168.1.45")));
+    }
+
+    [Fact]
+    public void WithRelocation_WontMoveOntoAnotherDevicesAddress()
+    {
+        var id = Guid.NewGuid();
+        var devices = new List<WizDevice> { Device("192.168.1.20", id), Device("192.168.1.45") };
+
+        Assert.Null(WizDeviceList.WithRelocation(devices, new WizDeviceRelocated(id, "192.168.1.20", "192.168.1.45")));
+    }
+
+    [Fact]
+    public void WithRelocation_IgnoresADeviceNotInTheList()
+    {
+        var devices = new List<WizDevice> { Device("192.168.1.20") };
+
+        Assert.Null(WizDeviceList.WithRelocation(devices, new WizDeviceRelocated(Guid.NewGuid(), "192.168.1.20", "192.168.1.45")));
+    }
+
+    [Fact]
+    public void RelocatedMessage_NamesTheDeviceAndItsNewAddress()
+    {
+        var message = WizDeviceList.RelocatedMessage(Device("192.168.1.45"));
+
+        Assert.Contains("'Lamp'", message);
+        Assert.Contains("192.168.1.45", message);
+    }
+
+    [Fact]
+    public void EditTarget_KeepsAMoveMadeWhileTheDialogWasOpen()
+    {
+        var id = Guid.NewGuid();
+        var opened = Device("192.168.1.20", id);
+        var devices = new List<WizDevice> { Device("192.168.1.30"), opened with { IpAddress = "192.168.1.45" } };
+        var edited = opened with { Name = "Desk lamp" };
+
+        Assert.Equal((1, edited with { IpAddress = "192.168.1.45" }), WizDeviceList.EditTarget(devices, opened, edited));
+    }
+
+    [Fact]
+    public void EditTarget_UsesAnAddressTheUserTypedOverAMove()
+    {
+        var id = Guid.NewGuid();
+        var opened = Device("192.168.1.20", id);
+        var devices = new List<WizDevice> { opened with { IpAddress = "192.168.1.45" } };
+        var edited = opened with { IpAddress = "192.168.1.50" };
+
+        Assert.Equal((0, edited), WizDeviceList.EditTarget(devices, opened, edited));
+    }
+
+    [Fact]
+    public void EditTarget_ADeviceNoLongerInTheList_IsNull()
+    {
+        var opened = Device("192.168.1.20");
+
+        Assert.Null(WizDeviceList.EditTarget(new List<WizDevice> { Device("192.168.1.30") }, opened, opened));
+    }
+
+    [Fact]
+    public void IndexOf_FindsByIdOrReturnsMinusOne()
+    {
+        var id = Guid.NewGuid();
+        var devices = new List<WizDevice> { Device("192.168.1.30"), Device("192.168.1.20", id) };
+
+        Assert.Equal(1, WizDeviceList.IndexOf(devices, id));
+        Assert.Equal(-1, WizDeviceList.IndexOf(devices, Guid.NewGuid()));
+    }
 }

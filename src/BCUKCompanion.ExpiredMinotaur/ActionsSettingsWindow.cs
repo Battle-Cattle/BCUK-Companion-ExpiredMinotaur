@@ -30,8 +30,13 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
     /// <param name="wizClient">Used by device discovery and the Test button.</param>
     /// <param name="treadmillClient">The shared treadmill connection the top panel controls.</param>
     /// <param name="getCompanionClient">The shell's current client, for live reward/command names.</param>
+    /// <param name="relocator">Finds devices that moved while actions run; while the window is open, a move updates its device list. Null for none.</param>
     public ActionsSettingsWindow(
-        ActionsConfigStore configStore, WizClient wizClient, TreadmillClient treadmillClient, Func<CompanionClient?>? getCompanionClient = null)
+        ActionsConfigStore configStore,
+        WizClient wizClient,
+        TreadmillClient treadmillClient,
+        Func<CompanionClient?>? getCompanionClient = null,
+        WizDeviceRelocator? relocator = null)
         : base(configStore, configStore.Load(), getCompanionClient)
     {
         this.wizClient = wizClient;
@@ -70,6 +75,31 @@ public sealed class ActionsSettingsWindow : EventActionMappingsWindow<ActionsCon
         RefreshRewardTitleSuggestions();
 
         Closed += (_, _) => treadmillPanel.Detach();
+
+        if (relocator is not null)
+        {
+            // Raised on the action's thread; the device list belongs to the UI thread.
+            EventHandler<WizDeviceRelocated> onRelocated = (_, e) => Dispatcher.InvokeAsync(() => OnDeviceRelocated(e));
+            relocator.Relocated += onRelocated;
+            Closed += (_, _) => relocator.Relocated -= onRelocated;
+        }
+    }
+
+    /// <summary>
+    /// Shows a device's new address, found while an action ran, in the device list, so a later
+    /// Save keeps it instead of writing the old one back. A device whose address the user has
+    /// already changed here is left alone.
+    /// </summary>
+    /// <param name="relocated">The device that moved, and its old and new addresses.</param>
+    internal void OnDeviceRelocated(WizDeviceRelocated relocated)
+    {
+        if (WizDeviceList.WithRelocation(devices, relocated) is not var (index, device))
+        {
+            return;
+        }
+
+        devices[index] = device;
+        StatusText.Text = WizDeviceList.RelocatedMessage(device);
     }
 
     /// <summary>Snapshots the window's current devices and mappings for saving or testing.</summary>

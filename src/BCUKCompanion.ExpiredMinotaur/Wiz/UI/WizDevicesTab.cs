@@ -98,7 +98,8 @@ public sealed class WizDevicesTab : DockPanel
 
     /// <summary>
     /// Replaces the selected device with the edited one and removes any of its actions the edit
-    /// made invalid (e.g. SetColor on a device that no longer supports color).
+    /// made invalid (e.g. SetColor on a device that no longer supports color). A move to a new
+    /// address while the dialog was open is kept unless the dialog changed the address too.
     /// </summary>
     private void OnEditDevice()
     {
@@ -114,17 +115,23 @@ public sealed class WizDevicesTab : DockPanel
             return;
         }
 
-        if (WizDeviceList.IsDuplicateIp(devices, updated.IpAddress, exceptId: updated.Id))
+        if (WizDeviceList.EditTarget(devices, selected, updated) is not var (index, device))
+        {
+            host.ShowStatus(WizDeviceList.EditedDeviceGoneMessage);
+            return;
+        }
+
+        if (WizDeviceList.IsDuplicateIp(devices, device.IpAddress, exceptId: device.Id))
         {
             host.ShowStatus(WizDeviceList.DuplicateIpMessage);
             return;
         }
 
-        devices[devices.IndexOf(selected)] = updated;
+        devices[index] = device;
 
         var context = host.BuildContext();
         var removedActionCount = host.RemoveActions(
-            a => a is WizDeviceActionBase d && d.DeviceId == updated.Id && d.Validate(context).Count > 0);
+            a => a is WizDeviceActionBase d && d.DeviceId == device.Id && d.Validate(context).Count > 0);
 
         // Even with nothing removed: the actions' descriptions include the device's name.
         host.RefreshActions();
@@ -146,7 +153,11 @@ public sealed class WizDevicesTab : DockPanel
         host.ShowStatus(WizDeviceList.RemovedMessage(removedActionCount));
     }
 
-    /// <summary>Adds the devices picked in the LAN discovery dialog, and fills in the MAC address of known devices that answered.</summary>
+    /// <summary>
+    /// Adds the devices picked in the LAN discovery dialog, and fills in the MAC address of known
+    /// devices that answered. A pick whose address a device took while the dialog was open (found
+    /// at a new address) is skipped.
+    /// </summary>
     private void OnDiscoverDevices()
     {
         var dialog = new WizDiscoverDevicesDialog(wizClient, devices.Select(d => d.IpAddress).ToList()) { Owner = Window.GetWindow(this) };
@@ -163,9 +174,21 @@ public sealed class WizDevicesTab : DockPanel
             return;
         }
 
+        var skipped = false;
         foreach (var device in dialog.AddedDevices)
         {
+            if (WizDeviceList.IsDuplicateIp(devices, device.IpAddress))
+            {
+                skipped = true;
+                continue;
+            }
+
             devices.Add(device);
+        }
+
+        if (skipped)
+        {
+            host.ShowStatus(WizDeviceList.DuplicateIpMessage);
         }
     }
 }
